@@ -834,7 +834,7 @@
         lastSavedAt: new Date().toLocaleTimeString(),
         studioName: "Estudio Animación 2D — Moho Rigging",
         workspaceId: "MOHO-RIG-SERIE-2026",
-        firebaseUrl: "",
+        firebaseUrl: "https://rig-management-estudio-default-rtdb.firebaseio.com",
         rigFolders,
         teamFolders,
         shareLinks: [
@@ -975,8 +975,9 @@
       updateTopbarUI();
     }
 
+    const DEFAULT_FIREBASE_URL = "https://rig-management-estudio-default-rtdb.firebaseio.com";
     function getCleanFirebaseUrl() {
-      const raw = (state.firebaseUrl || "").trim();
+      const raw = (state.firebaseUrl || DEFAULT_FIREBASE_URL || "").trim();
       if (!raw) return "";
       return raw.replace(/\/$/, "") + "/rig_management_state.json";
     }
@@ -1034,6 +1035,7 @@
           .loadDatabaseFromDrive();
       } else {
         loadLocalFallback();
+        if (!state.firebaseUrl) state.firebaseUrl = DEFAULT_FIREBASE_URL;
         const fbUrl = getCleanFirebaseUrl();
         if (fbUrl) {
           try {
@@ -1055,6 +1057,7 @@
     }
 
     function normalizeStateArrays() {
+      if (!state.firebaseUrl) state.firebaseUrl = DEFAULT_FIREBASE_URL;
       if (!state.rigFolders) state.rigFolders = [];
       if (!state.teamFolders) state.teamFolders = [];
       if (!state.shareLinks) state.shareLinks = [];
