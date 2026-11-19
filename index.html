@@ -459,6 +459,44 @@
 </head>
 <body>
 
+  <!-- FIREBASE SDK (COMPAT PARA ARCHIVO STANDALONE) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+
+  <!-- PANTALLA DE LOGIN PRIVADO -->
+  <div class="cloud-loader" id="auth-gate" style="display:none;background:radial-gradient(circle at top, #131f3a 0%, #070b14 100%);padding:20px;">
+    <div style="background:var(--bg-panel);border:1px solid var(--border-light);border-radius:16px;padding:32px 28px;width:100%;max-width:410px;box-shadow:0 24px 60px rgba(0,0,0,0.65);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+        <div class="brand-logo" style="width:42px;height:42px;font-size:17px;">RM</div>
+        <div>
+          <div style="font-weight:800;font-size:16px;letter-spacing:0.4px;">RIG MANAGEMENT SYSTEM</div>
+          <div style="font-size:11.5px;color:var(--cyan);font-weight:600;">🔒 ACCESO PRIVADO DEL ESTUDIO</div>
+        </div>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:18px;">
+        Iniciá sesión con tu correo y contraseña autorizados en Firebase para acceder al workspace de rigging.
+      </p>
+      <form onsubmit="handleFirebaseLogin(event)" style="display:flex;flex-direction:column;gap:13px;">
+        <div class="form-group">
+          <label>Correo Electrónico *</label>
+          <input type="email" id="login-email" required placeholder="tu-correo@estudio.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label>Contraseña *</label>
+          <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <div id="login-error" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.45);color:#fca5a5;padding:9px 11px;border-radius:8px;font-size:12px;"></div>
+        <button type="submit" id="login-submit-btn" class="btn btn-primary" style="width:100%;padding:11px;font-size:14px;margin-top:4px;">
+          🔐 Ingresar al Sistema
+        </button>
+      </form>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text-dim);text-align:center;">
+        Protegido por Firebase Authentication &amp; Realtime Database
+      </div>
+    </div>
+  </div>
+
   <!-- LOADER -->
   <div class="cloud-loader" id="cloud-loader">
     <div class="spinner"></div>
@@ -561,6 +599,69 @@
   <div class="toast" id="toast">✓ Cambios guardados</div>
 
   <script>
+    // =========================================================================
+    // 0. CONFIGURACIÓN PRIVADA FIREBASE AUTH + REALTIME DATABASE
+    // =========================================================================
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyB8oBAyuGXQ8LKfjSAZDSMwzXwQuWtsdVQ",
+      authDomain: "rig-management-estudio.firebaseapp.com",
+      databaseURL: "https://rig-management-estudio-default-rtdb.firebaseio.com",
+      projectId: "rig-management-estudio",
+      storageBucket: "rig-management-estudio.firebasestorage.app",
+      messagingSenderId: "436229032830",
+      appId: "1:436229032830:web:41ee99ee9581f61822012f",
+      measurementId: "G-03L9LQWC9E"
+    };
+
+    let fbApp = null;
+    let fbAuth = null;
+    let fbDb = null;
+    let currentAuthUser = null;
+
+    if (typeof firebase !== "undefined") {
+      fbApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+      fbAuth = firebase.auth();
+      fbDb = firebase.database();
+    }
+
+    async function handleFirebaseLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById("login-email").value.trim();
+      const pass = document.getElementById("login-password").value;
+      const errBox = document.getElementById("login-error");
+      const btn = document.getElementById("login-submit-btn");
+
+      errBox.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "Verificando credenciales...";
+
+      try {
+        await fbAuth.signInWithEmailAndPassword(email, pass);
+      } catch (err) {
+        let msg = "Correo o contraseña incorrectos.";
+        if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+          msg = "Usuario no encontrado o contraseña incorrecta. Verificá que el usuario exista en Firebase Authentication.";
+        } else if (err.code === "auth/too-many-requests") {
+          msg = "Demasiados intentos fallidos. Esperá unos minutos e intentá de nuevo.";
+        } else if (err.code === "auth/operation-not-allowed") {
+          msg = "El inicio de sesión con Correo/Contraseña aún no está habilitado en Firebase Authentication.";
+        } else if (err && err.message) {
+          msg = err.message;
+        }
+        errBox.textContent = "⚠️ " + msg;
+        errBox.style.display = "block";
+        btn.disabled = false;
+        btn.textContent = "🔐 Ingresar al Sistema";
+      }
+    }
+
+    async function handleFirebaseLogout() {
+      if (fbAuth && confirm("¿Cerrar sesión y bloquear el acceso en este navegador?")) {
+        await fbAuth.signOut();
+        window.location.reload();
+      }
+    }
+
     // =========================================================================
     // 1. DETECCIÓN DE ENTORNO (GOOGLE APPS SCRIPT VS WEB APP STANDALONE)
     // =========================================================================
@@ -945,6 +1046,10 @@
 
     function resolveSharedSession() {
       const code = SERVER_VIEW_CODE || extractViewCodeFromLocation(null);
+      const userEmail = (currentAuthUser && currentAuthUser.email) ? currentAuthUser.email.toLowerCase().trim() : "";
+      const adminEmails = (state.adminEmails || []).map(e => String(e).toLowerCase().trim()).filter(Boolean);
+
+      // Si hay un código ?v=L-XXXX o ?v=D-XXXX explícito en la URL, siempre respeta ese modo invitado
       if (code) {
         const isDownload = code.startsWith("D-");
         const foundLink = (state.shareLinks || []).find(l => l.id.toUpperCase() === code);
@@ -955,9 +1060,23 @@
         const perm = foundLink ? foundLink.permission : (isDownload ? "descarga" : "lector");
         const label = foundLink ? foundLink.label : (perm === "descarga" ? "Invitado (Descarga)" : "Invitado (Solo Lector)");
         readOnlySession = { active: true, revoked: false, permission: perm, label, token: code };
-      } else {
-        readOnlySession = null;
+        return;
       }
+
+      // Si hay lista de correos administradores configurada y el usuario autenticado no está en ella, entra en modo lectura/descarga
+      if (userEmail && adminEmails.length > 0 && !adminEmails.includes(userEmail)) {
+        const teamCanDownload = state.teamDefaultDownload !== false;
+        readOnlySession = {
+          active: true,
+          revoked: false,
+          permission: teamCanDownload ? "descarga" : "lector",
+          label: `Equipo (${userEmail})`,
+          token: "AUTH-TEAM"
+        };
+        return;
+      }
+
+      readOnlySession = null;
     }
 
     function isAdmin() {
@@ -982,75 +1101,58 @@
       return raw.replace(/\/$/, "") + "/rig_management_state.json";
     }
 
-    async function bootstrapApp() {
-      // 1. Si estamos dentro de Google Apps Script, usar google.script.url.getLocation (sin plantillas)
-      if (HAS_GAS_API && google.script.url && google.script.url.getLocation) {
-        await new Promise((resolve) => {
-          google.script.url.getLocation((loc) => {
-            SERVER_VIEW_CODE = extractViewCodeFromLocation(loc);
-            resolve();
-          });
-        });
-      } else {
-        SERVER_VIEW_CODE = extractViewCodeFromLocation(null);
+    async function loadProtectedFirebaseData() {
+      document.getElementById("auth-gate").style.display = "none";
+      document.getElementById("cloud-loader").style.display = "flex";
+      SERVER_VIEW_CODE = extractViewCodeFromLocation(null);
+
+      try {
+        if (fbDb) {
+          const snap = await fbDb.ref("rig_management_state").once("value");
+          const cloudData = snap.val();
+          if (cloudData && cloudData.rigs) {
+            state = cloudData;
+            normalizeStateArrays();
+            // Si aún no hay correo administrador registrado, asignar automáticamente al primer usuario autenticado
+            if ((!state.adminEmails || state.adminEmails.length === 0) && currentAuthUser && currentAuthUser.email) {
+              state.adminEmails = [currentAuthUser.email.toLowerCase().trim()];
+              await fbDb.ref("rig_management_state/adminEmails").set(state.adminEmails);
+            }
+            localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(state));
+          } else {
+            loadLocalFallback();
+            if ((!state.adminEmails || state.adminEmails.length === 0) && currentAuthUser && currentAuthUser.email) {
+              state.adminEmails = [currentAuthUser.email.toLowerCase().trim()];
+            }
+            await fbDb.ref("rig_management_state").set(state);
+          }
+        } else {
+          loadLocalFallback();
+        }
+      } catch (err) {
+        console.error("Error leyendo Firebase protegido:", err);
+        alert("⚠️ No se pudo leer la base de datos de Firebase: " + (err.message || err));
+        loadLocalFallback();
       }
 
-      // 2. Cargar desde Google Drive (si es GAS) o desde Firebase / LocalStorage (si es Standalone)
-      if (HAS_GAS_API) {
-        google.script.run
-          .withSuccessHandler((res) => {
-            if (res && res.webAppUrl) SERVER_WEBAPP_URL = res.webAppUrl;
-            if (res && res.driveFolderUrl) DRIVE_FOLDER_URL = res.driveFolderUrl;
-            if (res && res.assetsFolderUrl) ASSETS_FOLDER_URL = res.assetsFolderUrl;
+      resolveSharedSession();
+      document.getElementById("cloud-loader").style.display = "none";
+      renderCurrentRoute();
+    }
 
-            if (res && res.state && res.state.rigs) {
-              state = res.state;
-              normalizeStateArrays();
-              resolveSharedSession();
-              document.getElementById("cloud-loader").style.display = "none";
-              renderCurrentRoute();
-            } else {
-              state = buildDefaultState();
-              resolveSharedSession();
-              if (isAdmin()) {
-                google.script.run
-                  .withSuccessHandler(() => {
-                    document.getElementById("cloud-loader").style.display = "none";
-                    renderCurrentRoute();
-                    showToast("☁️ Base de datos creada en tu Google Drive");
-                  })
-                  .saveDatabaseToDrive(JSON.stringify(state), "");
-              } else {
-                document.getElementById("cloud-loader").style.display = "none";
-                renderCurrentRoute();
-              }
-            }
-          })
-          .withFailureHandler((err) => {
-            console.error(err);
-            loadLocalFallback();
+    function bootstrapApp() {
+      if (fbAuth) {
+        fbAuth.onAuthStateChanged((user) => {
+          currentAuthUser = user;
+          if (user) {
+            loadProtectedFirebaseData();
+          } else {
             document.getElementById("cloud-loader").style.display = "none";
-            renderCurrentRoute();
-          })
-          .loadDatabaseFromDrive();
+            document.getElementById("auth-gate").style.display = "flex";
+          }
+        });
       } else {
         loadLocalFallback();
-        if (!state.firebaseUrl) state.firebaseUrl = DEFAULT_FIREBASE_URL;
-        const fbUrl = getCleanFirebaseUrl();
-        if (fbUrl) {
-          try {
-            const resp = await fetch(fbUrl);
-            const cloudData = await resp.json();
-            if (cloudData && cloudData.rigs) {
-              state = cloudData;
-              normalizeStateArrays();
-              localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(state));
-            }
-          } catch (e) {
-            console.warn("Firebase sync skipped:", e);
-          }
-        }
-        resolveSharedSession();
         document.getElementById("cloud-loader").style.display = "none";
         renderCurrentRoute();
       }
@@ -1104,25 +1206,21 @@
       } else {
         state.lastSavedAt = new Date().toLocaleTimeString();
         localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(state));
-        const fbUrl = getCleanFirebaseUrl();
-        if (fbUrl) {
+        if (fbDb) {
           isSavingCloud = true;
           updateTopbarUI();
           try {
-            await fetch(fbUrl, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(state)
-            });
+            await fbDb.ref("rig_management_state").set(state);
           } catch (e) {
             console.error("Error guardando en Firebase:", e);
+            alert("⚠️ Error al guardar en Firebase: " + (e.message || e));
           }
           isSavingCloud = false;
         }
         isDirty = false;
         updateTopbarUI();
         renderCurrentRoute();
-        showToast("✓ " + toastMsg);
+        showToast("🔒 " + toastMsg);
       }
     }
 
@@ -1246,6 +1344,7 @@
           <span class="badge ${isDl ? 'st-progreso' : 'st-revision'}">
             ${isDl ? "📥 Lectura + Descarga" : "🔒 Solo Lectura"}
           </span>
+          ${currentAuthUser ? `<button class="btn btn-sm btn-danger" onclick="handleFirebaseLogout()">🚪 Salir</button>` : ""}
         `;
         return;
       }
@@ -1272,6 +1371,7 @@
         <button class="btn btn-save btn-sm ${isDirty ? 'has-dirty' : ''}" onclick="commitSave('Cambios guardados')">
           💾 ${isDirty ? 'Guardar *' : 'Guardar'}
         </button>
+        ${currentAuthUser ? `<button class="btn btn-sm btn-danger" title="Cerrar sesión (${currentAuthUser.email})" onclick="handleFirebaseLogout()">🚪 Salir</button>` : ""}
       `;
     }
 
@@ -3022,13 +3122,25 @@
             <div class="form-group"><label>Nombre del Estudio</label><input type="text" id="cfg-studio" value="${state.studioName}" /></div>
             <div class="form-group"><label>Código Workspace</label><input type="text" id="cfg-ws" value="${state.workspaceId}" /></div>
           </div>
-          ${!HAS_GAS_API ? `
-            <div class="form-group" style="margin-top:14px;">
-              <label>URL de Firebase Realtime Database (Opcional — para sincronizar cambios en vivo entre tu PC y tus invitados)</label>
-              <input type="url" id="cfg-firebase" value="${state.firebaseUrl || ''}" placeholder="Ej: https://mi-proyecto-rig-default-rtdb.firebaseio.com" />
-              <span style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">Si pegás la URL de tu Firebase gratuito, cada cambio que guardes se reflejará en tiempo real para quienes abran tus links compartidos.</span>
+          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+            <div class="panel-title" style="font-size:14px;margin-bottom:10px;">🔐 Seguridad y Roles de Usuarios (Firebase Authentication)</div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Correos con Permiso de Administrador (separados por coma)</label>
+                <input type="text" id="cfg-admins" value="${(state.adminEmails || []).join(', ')}" placeholder="admin@estudio.com" />
+                <span style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
+                  Sesión actual: <strong>${currentAuthUser ? currentAuthUser.email : 'N/A'}</strong>. Cualquier otro usuario creado en Firebase Authentication entrará automáticamente en modo Equipo (solo lectura/descarga).
+                </span>
+              </div>
+              <div class="form-group">
+                <label>Permiso por defecto para usuarios del Equipo (no administradores)</label>
+                <select id="cfg-team-dl">
+                  <option value="true" ${state.teamDefaultDownload !== false ? "selected" : ""}>📥 Lectura + Descarga de archivos habilitados</option>
+                  <option value="false" ${state.teamDefaultDownload === false ? "selected" : ""}>🔒 Solo Lectura (sin descarga)</option>
+                </select>
+              </div>
             </div>
-          ` : ""}
+          </div>
           <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
             <span style="color:var(--text-muted);font-size:12.5px;">Restaurar datos iniciales de demostración:</span>
             <button class="btn btn-danger btn-sm" onclick="resetDemoData()">🔄 Restaurar Datos Precargados</button>
@@ -3040,9 +3152,15 @@
     function saveSettings() {
       state.studioName = document.getElementById("cfg-studio").value;
       state.workspaceId = document.getElementById("cfg-ws").value;
-      const fbInput = document.getElementById("cfg-firebase");
-      if (fbInput) state.firebaseUrl = fbInput.value.trim();
-      commitSave("Configuración guardada");
+      const adminsInput = document.getElementById("cfg-admins");
+      if (adminsInput) {
+        state.adminEmails = adminsInput.value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      }
+      const teamDlInput = document.getElementById("cfg-team-dl");
+      if (teamDlInput) {
+        state.teamDefaultDownload = teamDlInput.value === "true";
+      }
+      commitSave("Configuración de seguridad guardada");
     }
 
     function resetDemoData() {
