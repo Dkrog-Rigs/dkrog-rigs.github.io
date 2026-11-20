@@ -402,7 +402,6 @@
       background: #0e1628; position: sticky; left: 0; z-index: 6;
     }
     .gantt-header .gantt-info { z-index: 12; background: #0b1221; }
-    .gantt-timeline-cell { position: relative; min-height: 52px; display: flex; align-items: center; }
     .gantt-header-stack { display: flex; flex-direction: column; width: 100%; }
     .gantt-months-row { display: flex; border-bottom: 1px solid var(--border-light); background: #131e36; }
     .gantt-month-block {
@@ -437,17 +436,23 @@
     .gantt-day-col { flex: 1; border-right: 1px solid rgba(34,48,79,0.45); }
     .gantt-day-col.weekend { background: rgba(0,0,0,0.28); }
     .gantt-day-col.today { background: rgba(24,134,240,0.08); }
-    .gantt-marker-line {
-      position: absolute;
-      top: 0; bottom: 0;
-      width: 2px;
-      z-index: 4;
-      pointer-events: none;
+    .gantt-timeline-cell { position: relative; min-height: 64px; display: flex; align-items: flex-end; padding-bottom: 8px; }
+    .gantt-header .gantt-timeline-cell { min-height: auto; align-items: stretch; padding-bottom: 0; }
+    .gantt-bar {
+      position: absolute; bottom: 8px; height: 28px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 8px; font-size: 11.5px; font-weight: 700; color: #fff;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+      cursor: grab; user-select: none; z-index: 3;
+      overflow: hidden; white-space: nowrap;
     }
-    .gantt-marker-flag {
+    .gantt-task-pin {
       position: absolute;
-      top: 2px;
+      bottom: 36px; /* Justo encima de la barra (8px bottom + 28px height) */
       transform: translateX(-50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       padding: 2px 7px;
       border-radius: 5px;
       font-size: 10.5px;
@@ -455,18 +460,27 @@
       color: #fff;
       white-space: nowrap;
       cursor: pointer;
-      z-index: 8;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-      pointer-events: auto;
+      z-index: 9;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.55);
+      transition: transform 0.12s ease;
     }
-    .gantt-bar {
-      position: absolute; height: 28px; border-radius: 6px;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 8px; font-size: 11.5px; font-weight: 700; color: #fff;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-      cursor: grab; user-select: none; z-index: 3;
-      overflow: hidden; white-space: nowrap;
+    .gantt-task-pin:hover {
+      transform: translateX(-50%) scale(1.08);
+      z-index: 15;
     }
+    .gantt-task-pin::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -5px;
+      transform: translateX(-50%);
+      border-width: 5px 5px 0 5px;
+      border-style: solid;
+      border-color: inherit;
+    }
+    .gantt-day-col.clickable-cell { cursor: crosshair; }
+    .gantt-day-col.clickable-cell:hover { background: rgba(239, 68, 68, 0.14); }
+    .gantt-bar.pin-mode { cursor: crosshair !important; }
     .gantt-bar.late { outline: 2px solid var(--red); }
 
     /* Toast */
@@ -663,13 +677,17 @@
       </div>
       <form onsubmit="saveTimelineMarker(event)">
         <input type="hidden" id="mk-id" />
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>Tarea / Personaje en la Timeline *</label>
+          <select id="mk-rig" required></select>
+        </div>
         <div class="form-grid">
           <div class="form-group">
-            <label>Fecha del Marcador *</label>
+            <label>Fecha del Marcador (punto sobre la barra) *</label>
             <input type="date" id="mk-date" required />
           </div>
           <div class="form-group">
-            <label>Color del Hito</label>
+            <label>Color del Marcador</label>
             <input type="color" id="mk-color" value="#ef4444" style="height:37px;padding:2px;" />
           </div>
         </div>
@@ -1054,10 +1072,11 @@
         timelineMarkers: [
           {
             id: "mk-1",
-            date: todayISO(5),
-            title: "Revisión General Layout",
-            color: "#f59e0b",
-            notes: "Control de proporciones y giros principales antes de pasar a animación."
+            rigId: "rig-plim",
+            date: todayISO(-4),
+            title: "Control Giro 3/4",
+            color: "#ef4444",
+            notes: "Revisar deformación de capa y sombrero antes de enviar a Layout."
           }
         ],
         reminders: [
@@ -2708,37 +2727,43 @@
       `;
     }
 
-    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60;
+    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60, ganttPinMode = false;
     const MONTH_NAMES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-    function openMarkerModal(markerId = "", presetDate = "") {
+    function openMarkerModal(markerId = "", presetDate = "", presetRigId = "") {
       const modal = document.getElementById("timeline-marker-modal");
       const delBtn = document.getElementById("mk-delete-btn");
       const saveBtn = document.getElementById("mk-save-btn");
       const titleEl = document.getElementById("tm-modal-title");
+      const rigSel = document.getElementById("mk-rig");
+
+      rigSel.innerHTML = state.rigs.map(r => `<option value="${r.id}">${r.name} (${r.category})</option>`).join("");
 
       if (markerId) {
         const mk = (state.timelineMarkers || []).find(x => x.id === markerId);
         if (!mk) return;
         document.getElementById("mk-id").value = mk.id;
+        rigSel.value = mk.rigId || (state.rigs[0]?.id || "");
         document.getElementById("mk-date").value = mk.date;
         document.getElementById("mk-color").value = mk.color || "#ef4444";
         document.getElementById("mk-title").value = mk.title;
         document.getElementById("mk-notes").value = mk.notes || "";
-        titleEl.textContent = isAdmin() ? "🚩 Editar Marcador y Anotaciones" : "🚩 Detalle del Marcador";
+        titleEl.textContent = isAdmin() ? "🚩 Editar Marcador en Tarea" : "🚩 Anotación del Marcador";
         delBtn.style.display = isAdmin() ? "inline-flex" : "none";
       } else {
         if (!isAdmin()) return;
         document.getElementById("mk-id").value = "";
+        rigSel.value = presetRigId || (state.rigs[0]?.id || "");
         document.getElementById("mk-date").value = presetDate || todayISO(0);
         document.getElementById("mk-color").value = "#ef4444";
         document.getElementById("mk-title").value = "";
         document.getElementById("mk-notes").value = "";
-        titleEl.textContent = "🚩 Nuevo Marcador en Timeline";
+        titleEl.textContent = "🚩 Nuevo Marcador sobre Tarea";
         delBtn.style.display = "none";
       }
 
       const dis = !isAdmin();
+      rigSel.disabled = dis;
       document.getElementById("mk-date").disabled = dis;
       document.getElementById("mk-color").disabled = dis;
       document.getElementById("mk-title").disabled = dis;
@@ -2757,6 +2782,7 @@
       if (!isAdmin()) return;
       if (!state.timelineMarkers) state.timelineMarkers = [];
       const id = document.getElementById("mk-id").value;
+      const rigId = document.getElementById("mk-rig").value;
       const date = document.getElementById("mk-date").value;
       const color = document.getElementById("mk-color").value;
       const title = document.getElementById("mk-title").value.trim();
@@ -2765,6 +2791,7 @@
       if (id) {
         const mk = state.timelineMarkers.find(x => x.id === id);
         if (mk) {
+          mk.rigId = rigId;
           mk.date = date;
           mk.color = color;
           mk.title = title;
@@ -2773,25 +2800,60 @@
       } else {
         state.timelineMarkers.push({
           id: "mk-" + Date.now(),
+          rigId,
           date,
           color,
           title,
           notes
         });
       }
+      ganttPinMode = false;
       closeMarkerModal();
-      commitSave(`Marcador "${title}" guardado en timeline`);
+      commitSave(`Marcador "${title}" guardado sobre la tarea`);
     }
 
     function deleteTimelineMarker() {
       if (!isAdmin()) return;
       const id = document.getElementById("mk-id").value;
       if (!id) return;
-      if (confirm("¿Eliminar este marcador de la timeline?")) {
+      if (confirm("¿Eliminar este marcador de la tarea?")) {
         state.timelineMarkers = (state.timelineMarkers || []).filter(x => x.id !== id);
         closeMarkerModal();
         commitSave("Marcador eliminado");
       }
+    }
+
+    function onBarClickWithPinCheck(e, rigId, originISO, totalCols) {
+      e.stopPropagation();
+      // Si el modo colocar marcador está activo (o si hace Alt+Clic / clic derecho en la barra), calcula la fecha exacta bajo el puntero del mouse!
+      if (isAdmin() && (ganttPinMode || e.altKey)) {
+        const cell = e.currentTarget.closest(".gantt-timeline-cell");
+        const rect = cell.getBoundingClientRect();
+        const relX = Math.max(0, Math.min(rect.width - 1, e.clientX - rect.left));
+        const dayIdx = Math.floor((relX / rect.width) * totalCols);
+        const sp = originISO.split("-").map(Number);
+        const d = new Date(sp[0], sp[1] - 1, sp[2]);
+        d.setDate(d.getDate() + dayIdx);
+        const clickedISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        openMarkerModal("", clickedISO, rigId);
+        return;
+      }
+      navigate("#/rig/" + rigId);
+    }
+
+    function onBarRightClickPin(e, rigId, originISO, totalCols) {
+      if (!isAdmin()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const cell = e.currentTarget.closest(".gantt-timeline-cell");
+      const rect = cell.getBoundingClientRect();
+      const relX = Math.max(0, Math.min(rect.width - 1, e.clientX - rect.left));
+      const dayIdx = Math.floor((relX / rect.width) * totalCols);
+      const sp = originISO.split("-").map(Number);
+      const d = new Date(sp[0], sp[1] - 1, sp[2]);
+      d.setDate(d.getDate() + dayIdx);
+      const clickedISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      openMarkerModal("", clickedISO, rigId);
     }
 
     function renderTimeline(el) {
@@ -2815,6 +2877,7 @@
 
       const sp = minDate.split("-").map(Number);
       const originDate = new Date(sp[0], sp[1] - 1, sp[2]);
+      const originISO = `${sp[0]}-${String(sp[1]).padStart(2, "0")}-${String(sp[2]).padStart(2, "0")}`;
       const ep = maxEndDate.split("-").map(Number);
       const endBoundDate = new Date(ep[0], ep[1] - 1, ep[2]);
       const neededDays = Math.round((endBoundDate - originDate) / 86400000) + 5;
@@ -2847,17 +2910,8 @@
         }
       }
 
-      // Calcular posiciones de los marcadores visibles en el rango
-      const visibleMarkers = (state.timelineMarkers || []).map(mk => {
-        const mp = mk.date.split("-").map(Number);
-        const mDate = new Date(mp[0], mp[1] - 1, mp[2]);
-        const idx = Math.round((mDate - originDate) / 86400000);
-        if (idx < 0 || idx >= totalCols) return null;
-        const leftPct = ((idx + 0.5) / totalCols) * 100;
-        return { ...mk, idx, leftPct };
-      }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
-
       const gridMinWidth = Math.max(1200, 260 + totalCols * 34);
+      const totalMarkers = (state.timelineMarkers || []).length;
 
       el.innerHTML = `
         <div class="panel" style="margin-bottom:14px;">
@@ -2882,7 +2936,10 @@
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               ${isAdmin() ? `
-                <button class="btn btn-primary btn-sm" onclick="openMarkerModal()">🚩 + Agregar Marcador</button>
+                <button class="btn btn-sm ${ganttPinMode ? 'btn-danger' : 'btn-primary'}"
+                        onclick="ganttPinMode=!ganttPinMode;renderCurrentRoute()">
+                  ${ganttPinMode ? '🎯 Hacé clic sobre la barra de la tarea... (Cancelar)' : '🚩 Colocar Marcador en Tarea'}
+                </button>
                 <button class="btn btn-save btn-sm" onclick="commitSave('Cronograma Gantt guardado')">💾 Guardar Timeline</button>
               ` : ""}
             </div>
@@ -2891,8 +2948,8 @@
 
         <div class="panel" style="padding:12px;">
           <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span>💡 <strong>Tip:</strong> ${isAdmin() ? "Hacé clic en cualquier día de la fila superior para crear un marcador en esa fecha, o clic en una bandera para editar sus anotaciones." : "Hacé clic en cualquier marcador de bandera para leer sus anotaciones."}</span>
-            <span>🚩 Marcadores activos: <strong>${visibleMarkers.length}</strong></span>
+            <span>💡 <strong>Cómo poner un marcador arriba de una tarea:</strong> ${isAdmin() ? "Tocá <strong>🚩 Colocar Marcador en Tarea</strong> y hacé clic justo en el punto de la barra donde querés el marcador (o hacé <strong>clic derecho</strong> directo sobre cualquier barra)." : "Hacé clic en cualquier banderín sobre una tarea para leer su anotación."}</span>
+            <span>🚩 Marcadores en tareas: <strong>${totalMarkers}</strong></span>
           </div>
 
           <div class="gantt-container">
@@ -2902,7 +2959,7 @@
                   <div style="font-size:12px;color:#fff;">Asset / Inicio / Duración</div>
                   <div style="font-size:10.5px;color:var(--text-dim);">Mes arriba · Días abajo</div>
                 </div>
-                <div class="gantt-header-stack" style="position:relative;">
+                <div class="gantt-header-stack">
                   <!-- FILA 1: MESES -->
                   <div class="gantt-months-row">
                     ${monthGroups.map(mg => `
@@ -2910,40 +2967,15 @@
                     `).join("")}
                   </div>
                   <!-- FILA 2: DÍAS -->
-                  <div class="gantt-days-row" style="position:relative;">
+                  <div class="gantt-days-row">
                     ${daysArray.map(d => `
-                      <div class="gantt-day-header-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}"
-                           title="${isAdmin() ? 'Clic para agregar marcador el ' + d.iso : d.iso}"
-                           onclick="${isAdmin() ? `openMarkerModal('', '${d.iso}')` : ''}">
+                      <div class="gantt-day-header-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}">
                         ${d.dayNum}
                       </div>
                     `).join("")}
                   </div>
                 </div>
               </div>
-
-              <!-- FILA DE BANDERAS DE MARCADORES -->
-              ${visibleMarkers.length > 0 ? `
-                <div class="gantt-row" style="background:rgba(15,23,42,0.85);">
-                  <div class="gantt-info" style="padding:6px 12px;">
-                    <span style="font-size:11.5px;font-weight:800;color:#fca5a5;">🚩 MARCADORES E HITOS</span>
-                  </div>
-                  <div class="gantt-timeline-cell" style="min-height:34px;">
-                    <div class="gantt-days-bg">
-                      ${daysArray.map(d => `<div class="gantt-day-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}"></div>`).join("")}
-                    </div>
-                    ${visibleMarkers.map(mk => `
-                      <div class="gantt-marker-line" style="left:${mk.leftPct}%;background:${mk.color || '#ef4444'};"></div>
-                      <div class="gantt-marker-flag"
-                           style="left:${mk.leftPct}%;background:${mk.color || '#ef4444'};"
-                           title="${mk.date} — ${mk.title}${mk.notes ? ': ' + mk.notes : ''}"
-                           onclick="openMarkerModal('${mk.id}')">
-                        🚩 ${mk.title}
-                      </div>
-                    `).join("")}
-                  </div>
-                </div>
-              ` : ""}
 
               ${filtered.map(r => {
                 const m = calcRigMetrics(r);
@@ -2955,6 +2987,20 @@
                 const spanCols = Math.max(1, Math.round((eDate - sDate) / 86400000) + 1);
                 const leftPct = Math.min(98, (offsetIdx / totalCols) * 100);
                 const widthPct = Math.min(100 - leftPct, (spanCols / totalCols) * 100);
+
+                // Marcadores específicos de ESTA tarea (rigId === r.id)
+                const taskMarkers = (state.timelineMarkers || [])
+                  .filter(mk => mk.rigId === r.id || (!mk.rigId && r.id === state.rigs[0]?.id))
+                  .map(mk => {
+                    const mp = mk.date.split("-").map(Number);
+                    const mDate = new Date(mp[0], mp[1] - 1, mp[2]);
+                    const idx = Math.round((mDate - originDate) / 86400000);
+                    if (idx < 0 || idx >= totalCols) return null;
+                    const pinLeftPct = ((idx + 0.5) / totalCols) * 100;
+                    return { ...mk, pinLeftPct };
+                  })
+                  .filter(Boolean);
+
                 return `
                   <div class="gantt-row">
                     <div class="gantt-info">
@@ -2962,9 +3008,32 @@
                       ${isAdmin() ? `<div style="display:flex;gap:5px;margin-top:3px;"><input type="date" value="${r.startDate}" onchange="shiftRigStart('${r.id}', this.value)" style="padding:2px 5px;font-size:11px;" /><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', -1)">-1d</button><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', 1)">+1d</button></div>` : `<div style="font-size:11px;color:var(--text-dim);">${r.startDate} → ${m.endDate}</div>`}
                     </div>
                     <div class="gantt-timeline-cell">
-                      <div class="gantt-days-bg">${daysArray.map(d => `<div class="gantt-day-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}"></div>`).join("")}</div>
-                      ${visibleMarkers.map(mk => `<div class="gantt-marker-line" style="left:${mk.leftPct}%;background:${mk.color || '#ef4444'};opacity:0.75;"></div>`).join("")}
-                      <div class="gantt-bar ${m.isLate?'late':''}" draggable="${isAdmin()}" ondragstart="onGanttDragStart(event)" ondragend="onGanttDragEnd(event, '${r.id}', ${totalCols})" onclick="navigate('#/rig/${r.id}')" style="left:${leftPct}%;width:${widthPct}%;background:${complexityColorHex(r.complexity)};">
+                      <div class="gantt-days-bg">
+                        ${daysArray.map(d => `
+                          <div class="gantt-day-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''} ${isAdmin()?'clickable-cell':''}"
+                               title="${isAdmin() ? 'Clic para poner marcador en ' + r.name + ' el ' + d.iso : d.iso}"
+                               onclick="${isAdmin() ? `openMarkerModal('', '${d.iso}', '${r.id}')` : ''}">
+                          </div>
+                        `).join("")}
+                      </div>
+
+                      <!-- BANDERINES JUSTO ARRIBA DE LA BARRA DE ESTA TAREA -->
+                      ${taskMarkers.map(mk => `
+                        <div class="gantt-task-pin"
+                             style="left:${mk.pinLeftPct}%;background:${mk.color || '#ef4444'};border-color:${mk.color || '#ef4444'} transparent transparent transparent;"
+                             title="${mk.date} — ${mk.title}${mk.notes ? ': ' + mk.notes : ''}"
+                             onclick="event.stopPropagation();openMarkerModal('${mk.id}')">
+                          🚩 ${mk.title}
+                        </div>
+                      `).join("")}
+
+                      <div class="gantt-bar ${m.isLate?'late':''} ${ganttPinMode?'pin-mode':''}"
+                           draggable="${isAdmin() && !ganttPinMode}"
+                           ondragstart="onGanttDragStart(event)"
+                           ondragend="onGanttDragEnd(event, '${r.id}', ${totalCols})"
+                           onclick="onBarClickWithPinCheck(event, '${r.id}', '${originISO}', ${totalCols})"
+                           oncontextmenu="onBarRightClickPin(event, '${r.id}', '${originISO}', ${totalCols})"
+                           style="left:${leftPct}%;width:${widthPct}%;background:${complexityColorHex(r.complexity)};">
                         <span>${r.name} (${m.progress}%)</span><span>→ ${m.endDate.slice(5)}</span>
                       </div>
                     </div>
@@ -2974,24 +3043,30 @@
             </div>
           </div>
 
-          <!-- PANEL DE ANOTACIONES DE LOS MARCADORES -->
+          <!-- PANEL DE ANOTACIONES DE LOS MARCADORES POR TAREA -->
           <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <strong style="font-size:13.5px;">📝 Anotaciones de Marcadores en la Timeline (${(state.timelineMarkers || []).length})</strong>
+              <strong style="font-size:13.5px;">📝 Anotaciones de Marcadores por Tarea (${totalMarkers})</strong>
               ${isAdmin() ? `<button class="btn btn-sm btn-primary" onclick="openMarkerModal()">+ Nuevo Marcador</button>` : ""}
             </div>
-            ${(state.timelineMarkers || []).length === 0
-              ? `<div style="color:var(--text-dim);font-size:12.5px;">No hay marcadores creados aún. Hacé clic en cualquier número de día en la cabecera de la timeline o en "+ Agregar Marcador".</div>`
+            ${totalMarkers === 0
+              ? `<div style="color:var(--text-dim);font-size:12.5px;">No hay marcadores creados aún. Hacé clic encima de cualquier barra de tarea (o clic derecho sobre la barra) para colocar uno.</div>`
               : `<div class="grid-3">
-                  ${[...(state.timelineMarkers || [])].sort((a,b) => a.date.localeCompare(b.date)).map(mk => `
-                    <div style="background:var(--bg-card);border:1px solid var(--border-light);border-left:4px solid ${mk.color || '#ef4444'};border-radius:9px;padding:12px;cursor:pointer;" onclick="openMarkerModal('${mk.id}')">
-                      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:5px;">
-                        <strong style="color:#fff;font-size:13.5px;">🚩 ${mk.title}</strong>
-                        <span class="badge st-pendiente">${mk.date}</span>
+                  ${[...(state.timelineMarkers || [])].sort((a,b) => a.date.localeCompare(b.date)).map(mk => {
+                    const rigObj = state.rigs.find(r => r.id === mk.rigId);
+                    return `
+                      <div style="background:var(--bg-card);border:1px solid var(--border-light);border-left:4px solid ${mk.color || '#ef4444'};border-radius:9px;padding:12px;cursor:pointer;" onclick="openMarkerModal('${mk.id}')">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
+                          <strong style="color:#fff;font-size:13.5px;">🚩 ${mk.title}</strong>
+                          <span class="badge st-pendiente">${mk.date}</span>
+                        </div>
+                        <div style="font-size:11.5px;color:var(--cyan);font-weight:700;margin-bottom:5px;">
+                          Tarea: ${rigObj ? rigObj.name : "General"}
+                        </div>
+                        <div style="font-size:12.5px;color:var(--text-muted);white-space:pre-wrap;">${mk.notes || "Sin anotaciones adicionales."}</div>
                       </div>
-                      <div style="font-size:12.5px;color:var(--text-muted);white-space:pre-wrap;">${mk.notes || "Sin anotaciones adicionales."}</div>
-                    </div>
-                  `).join("")}
+                    `;
+                  }).join("")}
                 </div>`
             }
           </div>
