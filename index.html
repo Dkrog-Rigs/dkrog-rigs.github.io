@@ -170,6 +170,7 @@
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     .content { padding: 22px 24px 48px; max-width: 1560px; width: 100%; margin: 0 auto; }
+    .content.full-width-mode { max-width: 100%; padding: 16px 20px 40px; }
 
     /* Buttons */
     .btn {
@@ -387,25 +388,83 @@
     .subtab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
     /* Gantt */
-    .gantt-container { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-input); }
-    .gantt-grid { min-width: 1100px; }
+    .gantt-container { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-input); width: 100%; }
+    .gantt-grid { width: 100%; }
     .gantt-header, .gantt-row {
       display: grid;
-      grid-template-columns: 270px 1fr;
+      grid-template-columns: 260px 1fr;
       border-bottom: 1px solid var(--border);
     }
-    .gantt-header { background: #0d1526; font-weight: 700; font-size: 11.5px; color: var(--text-muted); position: sticky; top: 0; z-index: 5; }
-    .gantt-info { padding: 9px 12px; border-right: 1px solid var(--border); display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+    .gantt-header { background: #0d1526; font-weight: 700; font-size: 11.5px; color: var(--text-muted); position: sticky; top: 0; z-index: 10; }
+    .gantt-info {
+      padding: 9px 12px; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; justify-content: center; gap: 3px;
+      background: #0e1628; position: sticky; left: 0; z-index: 6;
+    }
+    .gantt-header .gantt-info { z-index: 12; background: #0b1221; }
     .gantt-timeline-cell { position: relative; min-height: 52px; display: flex; align-items: center; }
+    .gantt-header-stack { display: flex; flex-direction: column; width: 100%; }
+    .gantt-months-row { display: flex; border-bottom: 1px solid var(--border-light); background: #131e36; }
+    .gantt-month-block {
+      border-right: 1px solid var(--border-light);
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      text-align: center;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .gantt-days-row { display: flex; }
+    .gantt-day-header-col {
+      flex: 1;
+      border-right: 1px solid rgba(34,48,79,0.55);
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      padding: 5px 2px;
+      cursor: pointer;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .gantt-day-header-col:hover { background: rgba(24,134,240,0.22); color: #fff; }
+    .gantt-day-header-col.weekend { background: rgba(0,0,0,0.32); color: var(--text-dim); }
+    .gantt-day-header-col.today { background: rgba(24,134,240,0.25); color: #60a5fa; box-shadow: inset 0 -2px 0 var(--primary); }
     .gantt-days-bg { position: absolute; inset: 0; display: flex; }
-    .gantt-day-col { flex: 1; border-right: 1px solid rgba(34,48,79,0.45); font-size: 10px; text-align: center; padding-top: 4px; }
-    .gantt-day-col.weekend { background: rgba(0,0,0,0.28); color: var(--text-dim); }
+    .gantt-day-col { flex: 1; border-right: 1px solid rgba(34,48,79,0.45); }
+    .gantt-day-col.weekend { background: rgba(0,0,0,0.28); }
+    .gantt-day-col.today { background: rgba(24,134,240,0.08); }
+    .gantt-marker-line {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 2px;
+      z-index: 4;
+      pointer-events: none;
+    }
+    .gantt-marker-flag {
+      position: absolute;
+      top: 2px;
+      transform: translateX(-50%);
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 10.5px;
+      font-weight: 800;
+      color: #fff;
+      white-space: nowrap;
+      cursor: pointer;
+      z-index: 8;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      pointer-events: auto;
+    }
     .gantt-bar {
       position: absolute; height: 28px; border-radius: 6px;
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 8px; font-size: 11.5px; font-weight: 700; color: #fff;
       box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-      cursor: grab; user-select: none; z-index: 2;
+      cursor: grab; user-select: none; z-index: 3;
       overflow: hidden; white-space: nowrap;
     }
     .gantt-bar.late { outline: 2px solid var(--red); }
@@ -590,6 +649,44 @@
         <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;">
           <button type="button" class="btn" onclick="closeNewRigModal()">Cancelar</button>
           <button type="submit" class="btn btn-save">💾 Guardar Ficha</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL MARCADOR EN TIMELINE -->
+  <div class="modal-backdrop" id="timeline-marker-modal">
+    <div class="modal-box" style="max-width:480px;">
+      <div class="panel-header">
+        <div class="panel-title" id="tm-modal-title">🚩 Marcador en Timeline</div>
+        <button class="btn btn-sm" onclick="closeMarkerModal()">✕</button>
+      </div>
+      <form onsubmit="saveTimelineMarker(event)">
+        <input type="hidden" id="mk-id" />
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha del Marcador *</label>
+            <input type="date" id="mk-date" required />
+          </div>
+          <div class="form-group">
+            <label>Color del Hito</label>
+            <input type="color" id="mk-color" value="#ef4444" style="height:37px;padding:2px;" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+          <label>Título Corto del Marcador (se ve sobre la línea) *</label>
+          <input type="text" id="mk-title" required placeholder="Ej: Entrega Episodio 1 / Revisión Layout" />
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+          <label>Anotaciones y Detalles del Marcador</label>
+          <textarea id="mk-notes" placeholder="Escribí acá todas las notas, observaciones o acuerdos para esta fecha..."></textarea>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:8px;">
+          <button type="button" id="mk-delete-btn" class="btn btn-danger btn-sm" style="display:none;" onclick="deleteTimelineMarker()">🗑️ Eliminar Marcador</button>
+          <div style="display:flex;gap:8px;margin-left:auto;">
+            <button type="button" class="btn" onclick="closeMarkerModal()">Cancelar</button>
+            <button type="submit" id="mk-save-btn" class="btn btn-save">💾 Guardar Marcador</button>
+          </div>
         </div>
       </form>
     </div>
@@ -954,6 +1051,15 @@
             active: true
           }
         ],
+        timelineMarkers: [
+          {
+            id: "mk-1",
+            date: todayISO(5),
+            title: "Revisión General Layout",
+            color: "#f59e0b",
+            notes: "Control de proporciones y giros principales antes de pasar a animación."
+          }
+        ],
         reminders: [
           {
             id: "rem-1",
@@ -1164,6 +1270,7 @@
       if (!state.teamFolders) state.teamFolders = [];
       if (!state.shareLinks) state.shareLinks = [];
       if (!state.reminders) state.reminders = [];
+      if (!state.timelineMarkers) state.timelineMarkers = [];
       state.rigs.forEach(r => { if (!r.files) r.files = []; });
     }
 
@@ -1421,6 +1528,8 @@
       const hash = rawHash.split("?")[0];
       document.getElementById("topbar-route").textContent = hash;
       const container = document.getElementById("app-content");
+      if (hash === "#/timeline") container.classList.add("full-width-mode");
+      else container.classList.remove("full-width-mode");
 
       if (readOnlySession && readOnlySession.revoked) {
         container.innerHTML = `
@@ -2599,27 +2708,160 @@
       `;
     }
 
-    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL";
+    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60;
+    const MONTH_NAMES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+    function openMarkerModal(markerId = "", presetDate = "") {
+      const modal = document.getElementById("timeline-marker-modal");
+      const delBtn = document.getElementById("mk-delete-btn");
+      const saveBtn = document.getElementById("mk-save-btn");
+      const titleEl = document.getElementById("tm-modal-title");
+
+      if (markerId) {
+        const mk = (state.timelineMarkers || []).find(x => x.id === markerId);
+        if (!mk) return;
+        document.getElementById("mk-id").value = mk.id;
+        document.getElementById("mk-date").value = mk.date;
+        document.getElementById("mk-color").value = mk.color || "#ef4444";
+        document.getElementById("mk-title").value = mk.title;
+        document.getElementById("mk-notes").value = mk.notes || "";
+        titleEl.textContent = isAdmin() ? "🚩 Editar Marcador y Anotaciones" : "🚩 Detalle del Marcador";
+        delBtn.style.display = isAdmin() ? "inline-flex" : "none";
+      } else {
+        if (!isAdmin()) return;
+        document.getElementById("mk-id").value = "";
+        document.getElementById("mk-date").value = presetDate || todayISO(0);
+        document.getElementById("mk-color").value = "#ef4444";
+        document.getElementById("mk-title").value = "";
+        document.getElementById("mk-notes").value = "";
+        titleEl.textContent = "🚩 Nuevo Marcador en Timeline";
+        delBtn.style.display = "none";
+      }
+
+      const dis = !isAdmin();
+      document.getElementById("mk-date").disabled = dis;
+      document.getElementById("mk-color").disabled = dis;
+      document.getElementById("mk-title").disabled = dis;
+      document.getElementById("mk-notes").disabled = dis;
+      saveBtn.style.display = dis ? "none" : "inline-flex";
+
+      modal.classList.add("open");
+    }
+
+    function closeMarkerModal() {
+      document.getElementById("timeline-marker-modal").classList.remove("open");
+    }
+
+    function saveTimelineMarker(e) {
+      e.preventDefault();
+      if (!isAdmin()) return;
+      if (!state.timelineMarkers) state.timelineMarkers = [];
+      const id = document.getElementById("mk-id").value;
+      const date = document.getElementById("mk-date").value;
+      const color = document.getElementById("mk-color").value;
+      const title = document.getElementById("mk-title").value.trim();
+      const notes = document.getElementById("mk-notes").value.trim();
+
+      if (id) {
+        const mk = state.timelineMarkers.find(x => x.id === id);
+        if (mk) {
+          mk.date = date;
+          mk.color = color;
+          mk.title = title;
+          mk.notes = notes;
+        }
+      } else {
+        state.timelineMarkers.push({
+          id: "mk-" + Date.now(),
+          date,
+          color,
+          title,
+          notes
+        });
+      }
+      closeMarkerModal();
+      commitSave(`Marcador "${title}" guardado en timeline`);
+    }
+
+    function deleteTimelineMarker() {
+      if (!isAdmin()) return;
+      const id = document.getElementById("mk-id").value;
+      if (!id) return;
+      if (confirm("¿Eliminar este marcador de la timeline?")) {
+        state.timelineMarkers = (state.timelineMarkers || []).filter(x => x.id !== id);
+        closeMarkerModal();
+        commitSave("Marcador eliminado");
+      }
+    }
+
     function renderTimeline(el) {
       const filtered = state.rigs.filter(r => {
         if (ganttCatFilter !== "ALL" && r.category !== ganttCatFilter) return false;
         if (ganttAssigneeFilter !== "ALL" && r.assigneeId !== ganttAssigneeFilter) return false;
         return true;
       });
-      let minDate = todayISO(-15);
-      filtered.forEach(r => { if (r.startDate && r.startDate < minDate) minDate = r.startDate; });
+
+      let minDate = todayISO(-5);
+      let maxEndDate = todayISO(35);
+      filtered.forEach(r => {
+        if (r.startDate && r.startDate < minDate) minDate = r.startDate;
+        const m = calcRigMetrics(r);
+        if (m.endDate && m.endDate > maxEndDate) maxEndDate = m.endDate;
+      });
+      (state.timelineMarkers || []).forEach(mk => {
+        if (mk.date && mk.date < minDate) minDate = mk.date;
+        if (mk.date && mk.date > maxEndDate) maxEndDate = mk.date;
+      });
+
       const sp = minDate.split("-").map(Number);
       const originDate = new Date(sp[0], sp[1] - 1, sp[2]);
-      const totalCols = 45;
+      const ep = maxEndDate.split("-").map(Number);
+      const endBoundDate = new Date(ep[0], ep[1] - 1, ep[2]);
+      const neededDays = Math.round((endBoundDate - originDate) / 86400000) + 5;
+      const totalCols = Math.max(ganttDaysRange, neededDays);
+      const todayStr = todayISO(0);
+
       const daysArray = [];
+      const monthGroups = [];
       for (let i = 0; i < totalCols; i++) {
         const d = new Date(originDate);
         d.setDate(d.getDate() + i);
-        daysArray.push({ label: `${d.getDate()}/${d.getMonth()+1}`, isWeekend: d.getDay() === 0 || d.getDay() === 6 });
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        const iso = `${yyyy}-${mm}-${dd}`;
+        const monthKey = `${yyyy}-${mm}`;
+        const monthLabel = `${MONTH_NAMES_ES[d.getMonth()]} ${yyyy}`;
+
+        daysArray.push({
+          iso,
+          dayNum: dd,
+          isWeekend: d.getDay() === 0 || d.getDay() === 6,
+          isToday: iso === todayStr
+        });
+
+        if (monthGroups.length === 0 || monthGroups[monthGroups.length - 1].key !== monthKey) {
+          monthGroups.push({ key: monthKey, label: monthLabel, count: 1 });
+        } else {
+          monthGroups[monthGroups.length - 1].count++;
+        }
       }
+
+      // Calcular posiciones de los marcadores visibles en el rango
+      const visibleMarkers = (state.timelineMarkers || []).map(mk => {
+        const mp = mk.date.split("-").map(Number);
+        const mDate = new Date(mp[0], mp[1] - 1, mp[2]);
+        const idx = Math.round((mDate - originDate) / 86400000);
+        if (idx < 0 || idx >= totalCols) return null;
+        const leftPct = ((idx + 0.5) / totalCols) * 100;
+        return { ...mk, idx, leftPct };
+      }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
+
+      const gridMinWidth = Math.max(1200, 260 + totalCols * 34);
+
       el.innerHTML = `
-        <div class="panel">
-          <div class="panel-header">
+        <div class="panel" style="margin-bottom:14px;">
+          <div class="panel-header" style="margin-bottom:0;">
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
               <select onchange="ganttCatFilter=this.value;renderCurrentRoute()">
                 <option value="ALL">Todas las categorías</option>
@@ -2631,16 +2873,78 @@
                 <option value="ALL">Todos los responsables</option>
                 ${state.team.map(t => `<option value="${t.id}" ${ganttAssigneeFilter===t.id?"selected":""}>${t.name}</option>`).join("")}
               </select>
+              <select onchange="ganttDaysRange=Number(this.value);renderCurrentRoute()" title="Rango mínimo de días">
+                <option value="45" ${ganttDaysRange===45?"selected":""}>Vista 45 días</option>
+                <option value="60" ${ganttDaysRange===60?"selected":""}>Vista 60 días</option>
+                <option value="90" ${ganttDaysRange===90?"selected":""}>Vista 90 días</option>
+              </select>
               <span style="font-size:12px;color:var(--text-muted);"><strong style="color:#10b981">■ Baja</strong> · <strong style="color:#f59e0b">■ Media</strong> · <strong style="color:#f97316">■ Alta</strong> · <strong style="color:#8b5cf6">■ Muy Alta</strong></span>
             </div>
-            ${isAdmin() ? `<button class="btn btn-save btn-sm" onclick="commitSave('Cronograma Gantt guardado')">💾 Guardar Timeline</button>` : ""}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              ${isAdmin() ? `
+                <button class="btn btn-primary btn-sm" onclick="openMarkerModal()">🚩 + Agregar Marcador</button>
+                <button class="btn btn-save btn-sm" onclick="commitSave('Cronograma Gantt guardado')">💾 Guardar Timeline</button>
+              ` : ""}
+            </div>
           </div>
+        </div>
+
+        <div class="panel" style="padding:12px;">
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <span>💡 <strong>Tip:</strong> ${isAdmin() ? "Hacé clic en cualquier día de la fila superior para crear un marcador en esa fecha, o clic en una bandera para editar sus anotaciones." : "Hacé clic en cualquier marcador de bandera para leer sus anotaciones."}</span>
+            <span>🚩 Marcadores activos: <strong>${visibleMarkers.length}</strong></span>
+          </div>
+
           <div class="gantt-container">
-            <div class="gantt-grid">
+            <div class="gantt-grid" style="min-width:${gridMinWidth}px;">
               <div class="gantt-header">
-                <div class="gantt-info">Asset / Inicio / Duración</div>
-                <div class="gantt-timeline-cell"><div class="gantt-days-bg">${daysArray.map(d => `<div class="gantt-day-col ${d.isWeekend?'weekend':''}">${d.label}</div>`).join("")}</div></div>
+                <div class="gantt-info">
+                  <div style="font-size:12px;color:#fff;">Asset / Inicio / Duración</div>
+                  <div style="font-size:10.5px;color:var(--text-dim);">Mes arriba · Días abajo</div>
+                </div>
+                <div class="gantt-header-stack" style="position:relative;">
+                  <!-- FILA 1: MESES -->
+                  <div class="gantt-months-row">
+                    ${monthGroups.map(mg => `
+                      <div class="gantt-month-block" style="flex:${mg.count};">${mg.label}</div>
+                    `).join("")}
+                  </div>
+                  <!-- FILA 2: DÍAS -->
+                  <div class="gantt-days-row" style="position:relative;">
+                    ${daysArray.map(d => `
+                      <div class="gantt-day-header-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}"
+                           title="${isAdmin() ? 'Clic para agregar marcador el ' + d.iso : d.iso}"
+                           onclick="${isAdmin() ? `openMarkerModal('', '${d.iso}')` : ''}">
+                        ${d.dayNum}
+                      </div>
+                    `).join("")}
+                  </div>
+                </div>
               </div>
+
+              <!-- FILA DE BANDERAS DE MARCADORES -->
+              ${visibleMarkers.length > 0 ? `
+                <div class="gantt-row" style="background:rgba(15,23,42,0.85);">
+                  <div class="gantt-info" style="padding:6px 12px;">
+                    <span style="font-size:11.5px;font-weight:800;color:#fca5a5;">🚩 MARCADORES E HITOS</span>
+                  </div>
+                  <div class="gantt-timeline-cell" style="min-height:34px;">
+                    <div class="gantt-days-bg">
+                      ${daysArray.map(d => `<div class="gantt-day-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}"></div>`).join("")}
+                    </div>
+                    ${visibleMarkers.map(mk => `
+                      <div class="gantt-marker-line" style="left:${mk.leftPct}%;background:${mk.color || '#ef4444'};"></div>
+                      <div class="gantt-marker-flag"
+                           style="left:${mk.leftPct}%;background:${mk.color || '#ef4444'};"
+                           title="${mk.date} — ${mk.title}${mk.notes ? ': ' + mk.notes : ''}"
+                           onclick="openMarkerModal('${mk.id}')">
+                        🚩 ${mk.title}
+                      </div>
+                    `).join("")}
+                  </div>
+                </div>
+              ` : ""}
+
               ${filtered.map(r => {
                 const m = calcRigMetrics(r);
                 const sParts = r.startDate.split("-").map(Number);
@@ -2649,7 +2953,7 @@
                 const eDate = new Date(eParts[0], eParts[1]-1, eParts[2]);
                 const offsetIdx = Math.max(0, Math.round((sDate - originDate) / 86400000));
                 const spanCols = Math.max(1, Math.round((eDate - sDate) / 86400000) + 1);
-                const leftPct = Math.min(96, (offsetIdx / totalCols) * 100);
+                const leftPct = Math.min(98, (offsetIdx / totalCols) * 100);
                 const widthPct = Math.min(100 - leftPct, (spanCols / totalCols) * 100);
                 return `
                   <div class="gantt-row">
@@ -2658,7 +2962,8 @@
                       ${isAdmin() ? `<div style="display:flex;gap:5px;margin-top:3px;"><input type="date" value="${r.startDate}" onchange="shiftRigStart('${r.id}', this.value)" style="padding:2px 5px;font-size:11px;" /><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', -1)">-1d</button><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', 1)">+1d</button></div>` : `<div style="font-size:11px;color:var(--text-dim);">${r.startDate} → ${m.endDate}</div>`}
                     </div>
                     <div class="gantt-timeline-cell">
-                      <div class="gantt-days-bg">${daysArray.map(d => `<div class="gantt-day-col ${d.isWeekend?'weekend':''}"></div>`).join("")}</div>
+                      <div class="gantt-days-bg">${daysArray.map(d => `<div class="gantt-day-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}"></div>`).join("")}</div>
+                      ${visibleMarkers.map(mk => `<div class="gantt-marker-line" style="left:${mk.leftPct}%;background:${mk.color || '#ef4444'};opacity:0.75;"></div>`).join("")}
                       <div class="gantt-bar ${m.isLate?'late':''}" draggable="${isAdmin()}" ondragstart="onGanttDragStart(event)" ondragend="onGanttDragEnd(event, '${r.id}', ${totalCols})" onclick="navigate('#/rig/${r.id}')" style="left:${leftPct}%;width:${widthPct}%;background:${complexityColorHex(r.complexity)};">
                         <span>${r.name} (${m.progress}%)</span><span>→ ${m.endDate.slice(5)}</span>
                       </div>
@@ -2667,6 +2972,28 @@
                 `;
               }).join("")}
             </div>
+          </div>
+
+          <!-- PANEL DE ANOTACIONES DE LOS MARCADORES -->
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <strong style="font-size:13.5px;">📝 Anotaciones de Marcadores en la Timeline (${(state.timelineMarkers || []).length})</strong>
+              ${isAdmin() ? `<button class="btn btn-sm btn-primary" onclick="openMarkerModal()">+ Nuevo Marcador</button>` : ""}
+            </div>
+            ${(state.timelineMarkers || []).length === 0
+              ? `<div style="color:var(--text-dim);font-size:12.5px;">No hay marcadores creados aún. Hacé clic en cualquier número de día en la cabecera de la timeline o en "+ Agregar Marcador".</div>`
+              : `<div class="grid-3">
+                  ${[...(state.timelineMarkers || [])].sort((a,b) => a.date.localeCompare(b.date)).map(mk => `
+                    <div style="background:var(--bg-card);border:1px solid var(--border-light);border-left:4px solid ${mk.color || '#ef4444'};border-radius:9px;padding:12px;cursor:pointer;" onclick="openMarkerModal('${mk.id}')">
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:5px;">
+                        <strong style="color:#fff;font-size:13.5px;">🚩 ${mk.title}</strong>
+                        <span class="badge st-pendiente">${mk.date}</span>
+                      </div>
+                      <div style="font-size:12.5px;color:var(--text-muted);white-space:pre-wrap;">${mk.notes || "Sin anotaciones adicionales."}</div>
+                    </div>
+                  `).join("")}
+                </div>`
+            }
           </div>
         </div>
       `;
