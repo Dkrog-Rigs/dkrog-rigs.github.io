@@ -441,10 +441,65 @@
     .gantt-bar {
       position: absolute; bottom: 8px; height: 28px; border-radius: 6px;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 8px; font-size: 11.5px; font-weight: 700; color: #fff;
+      padding: 0 11px; font-size: 11.5px; font-weight: 700; color: #fff;
       box-shadow: 0 3px 10px rgba(0,0,0,0.35);
       cursor: grab; user-select: none; z-index: 3;
       overflow: hidden; white-space: nowrap;
+    }
+    .gantt-bar.resizing {
+      opacity: 0.92;
+      outline: 2px solid #fff;
+      z-index: 20;
+      cursor: ew-resize !important;
+    }
+    .gantt-resize-handle {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 9px;
+      cursor: ew-resize;
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s;
+    }
+    .gantt-resize-handle:hover {
+      background: rgba(255, 255, 255, 0.35);
+    }
+    .gantt-resize-handle::after {
+      content: "";
+      width: 2px;
+      height: 12px;
+      background: rgba(255,255,255,0.75);
+      border-radius: 2px;
+    }
+    .gantt-resize-handle.left { left: 0; border-radius: 6px 0 0 6px; }
+    .gantt-resize-handle.right { right: 0; border-radius: 0 6px 6px 0; }
+    .mk-swatch-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+    .mk-swatch {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.12s, border-color 0.12s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #fff;
+      font-weight: 800;
+    }
+    .mk-swatch:hover { transform: scale(1.1); }
+    .mk-swatch.selected {
+      border-color: #fff;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.35);
+      transform: scale(1.08);
     }
     .gantt-task-pin {
       position: absolute;
@@ -687,8 +742,15 @@
             <input type="date" id="mk-date" required />
           </div>
           <div class="form-group">
-            <label>Color del Marcador</label>
-            <input type="color" id="mk-color" value="#ef4444" style="height:37px;padding:2px;" />
+            <label>Color del Marcador (Rojo, Amarillo, Verde, Azul)</label>
+            <input type="hidden" id="mk-color" value="#ef4444" />
+            <div class="mk-swatch-row" id="mk-swatch-row">
+              <button type="button" class="mk-swatch" data-color="#ef4444" style="background:#ef4444;" title="Rojo" onclick="selectMarkerColor('#ef4444')">R</button>
+              <button type="button" class="mk-swatch" data-color="#f59e0b" style="background:#f59e0b;" title="Amarillo" onclick="selectMarkerColor('#f59e0b')">A</button>
+              <button type="button" class="mk-swatch" data-color="#10b981" style="background:#10b981;" title="Verde" onclick="selectMarkerColor('#10b981')">V</button>
+              <button type="button" class="mk-swatch" data-color="#1886F0" style="background:#1886F0;" title="Azul" onclick="selectMarkerColor('#1886F0')">Az</button>
+              <input type="color" id="mk-color-custom" value="#ef4444" title="Color personalizado" oninput="selectMarkerColor(this.value)" style="width:32px;height:28px;padding:1px;border-radius:6px;" />
+            </div>
           </div>
         </div>
         <div class="form-group" style="margin-top:12px;">
@@ -2730,6 +2792,16 @@
     let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60, ganttPinMode = false;
     const MONTH_NAMES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
+    function selectMarkerColor(hex) {
+      const inp = document.getElementById("mk-color");
+      const cust = document.getElementById("mk-color-custom");
+      if (inp) inp.value = hex;
+      if (cust && /^#[0-9A-Fa-f]{6}$/.test(hex)) cust.value = hex;
+      document.querySelectorAll("#mk-swatch-row .mk-swatch").forEach(btn => {
+        btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === hex.toLowerCase());
+      });
+    }
+
     function openMarkerModal(markerId = "", presetDate = "", presetRigId = "") {
       const modal = document.getElementById("timeline-marker-modal");
       const delBtn = document.getElementById("mk-delete-btn");
@@ -2745,7 +2817,7 @@
         document.getElementById("mk-id").value = mk.id;
         rigSel.value = mk.rigId || (state.rigs[0]?.id || "");
         document.getElementById("mk-date").value = mk.date;
-        document.getElementById("mk-color").value = mk.color || "#ef4444";
+        selectMarkerColor(mk.color || "#ef4444");
         document.getElementById("mk-title").value = mk.title;
         document.getElementById("mk-notes").value = mk.notes || "";
         titleEl.textContent = isAdmin() ? "🚩 Editar Marcador en Tarea" : "🚩 Anotación del Marcador";
@@ -2755,7 +2827,7 @@
         document.getElementById("mk-id").value = "";
         rigSel.value = presetRigId || (state.rigs[0]?.id || "");
         document.getElementById("mk-date").value = presetDate || todayISO(0);
-        document.getElementById("mk-color").value = "#ef4444";
+        selectMarkerColor("#ef4444");
         document.getElementById("mk-title").value = "";
         document.getElementById("mk-notes").value = "";
         titleEl.textContent = "🚩 Nuevo Marcador sobre Tarea";
@@ -2765,7 +2837,8 @@
       const dis = !isAdmin();
       rigSel.disabled = dis;
       document.getElementById("mk-date").disabled = dis;
-      document.getElementById("mk-color").disabled = dis;
+      document.getElementById("mk-color-custom").disabled = dis;
+      document.querySelectorAll("#mk-swatch-row .mk-swatch").forEach(b => b.disabled = dis);
       document.getElementById("mk-title").disabled = dis;
       document.getElementById("mk-notes").disabled = dis;
       saveBtn.style.display = dis ? "none" : "inline-flex";
@@ -2823,9 +2896,14 @@
       }
     }
 
+    let justResizedBar = false;
+
     function onBarClickWithPinCheck(e, rigId, originISO, totalCols) {
       e.stopPropagation();
-      // Si el modo colocar marcador está activo (o si hace Alt+Clic / clic derecho en la barra), calcula la fecha exacta bajo el puntero del mouse!
+      if (justResizedBar) {
+        justResizedBar = false;
+        return;
+      }
       if (isAdmin() && (ganttPinMode || e.altKey)) {
         const cell = e.currentTarget.closest(".gantt-timeline-cell");
         const rect = cell.getBoundingClientRect();
@@ -2854,6 +2932,93 @@
       d.setDate(d.getDate() + dayIdx);
       const clickedISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       openMarkerModal("", clickedISO, rigId);
+    }
+
+    // Redimensionar duración directamente desde los bordes izquierdo o derecho de la barra en el Gantt
+    function startGanttBarResize(e, rigId, edge, totalCols) {
+      if (!isAdmin()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (!rig) return;
+
+      const bar = e.currentTarget.closest(".gantt-bar");
+      const cell = bar.closest(".gantt-timeline-cell");
+      const cellWidth = cell.getBoundingClientRect().width || 800;
+      const colPx = cellWidth / totalCols;
+
+      const startX = e.clientX;
+      const origLeftPct = parseFloat(bar.style.left) || 0;
+      const origWidthPct = parseFloat(bar.style.width) || (100 / totalCols);
+      const origBaseDays = Number(rig.baseEstDays) || 1;
+      const origStartDate = rig.startDate;
+      const origEndDate = calcRigMetrics(rig).endDate;
+
+      bar.classList.add("resizing");
+      bar.setAttribute("draggable", "false");
+
+      let currentDeltaDays = 0;
+
+      function onMouseMove(ev) {
+        const dx = ev.clientX - startX;
+        currentDeltaDays = Math.round(dx / colPx);
+        const deltaPct = (currentDeltaDays / totalCols) * 100;
+        const minPct = (1 / totalCols) * 100;
+
+        if (edge === "right") {
+          const newW = Math.max(minPct, Math.min(100 - origLeftPct, origWidthPct + deltaPct));
+          bar.style.width = newW + "%";
+        } else {
+          const maxShift = origWidthPct - minPct;
+          const clampedShift = Math.max(-origLeftPct, Math.min(maxShift, deltaPct));
+          bar.style.left = (origLeftPct + clampedShift) + "%";
+          bar.style.width = (origWidthPct - clampedShift) + "%";
+        }
+      }
+
+      function onMouseUp() {
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+        bar.classList.remove("resizing");
+        justResizedBar = true;
+        setTimeout(() => { justResizedBar = false; }, 120);
+
+        if (currentDeltaDays !== 0) {
+          if (edge === "right") {
+            const m = calcRigMetrics(rig);
+            const extraDays = Number((m.customsDays + m.layoutDays).toFixed(1));
+            const newTotal = Math.max(0.5 + extraDays, m.totalEstDays + currentDeltaDays);
+            rig.baseEstDays = Math.max(0.5, Number((newTotal - extraDays).toFixed(1)));
+            if (!rig.history) rig.history = [];
+            rig.history.unshift({
+              date: new Date().toLocaleString(),
+              action: `Duración ajustada desde Timeline (${currentDeltaDays > 0 ? "+" : ""}${currentDeltaDays}d → ${calcRigMetrics(rig).totalEstDays}d totales)`
+            });
+            markDirty();
+            showToast(`⏱️ ${rig.name}: ${calcRigMetrics(rig).totalEstDays}d totales (hasta ${calcRigMetrics(rig).endDate})`);
+          } else {
+            const sp = origStartDate.split("-").map(Number);
+            const newS = new Date(sp[0], sp[1] - 1, sp[2]);
+            newS.setDate(newS.getDate() + currentDeltaDays);
+            const newStartISO = `${newS.getFullYear()}-${String(newS.getMonth() + 1).padStart(2, "0")}-${String(newS.getDate()).padStart(2, "0")}`;
+            if (newStartISO <= origEndDate) {
+              rig.startDate = newStartISO;
+              rig.baseEstDays = Math.max(0.5, Number((origBaseDays - currentDeltaDays).toFixed(1)));
+              if (!rig.history) rig.history = [];
+              rig.history.unshift({
+                date: new Date().toLocaleString(),
+                action: `Inicio ajustado desde Timeline (${newStartISO}, ${calcRigMetrics(rig).totalEstDays}d totales)`
+              });
+              markDirty();
+              showToast(`📅 ${rig.name}: inicio ${newStartISO} (${calcRigMetrics(rig).totalEstDays}d)`);
+            }
+          }
+        }
+        renderCurrentRoute();
+      }
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
     }
 
     function renderTimeline(el) {
@@ -2948,7 +3113,7 @@
 
         <div class="panel" style="padding:12px;">
           <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span>💡 <strong>Cómo poner un marcador arriba de una tarea:</strong> ${isAdmin() ? "Tocá <strong>🚩 Colocar Marcador en Tarea</strong> y hacé clic justo en el punto de la barra donde querés el marcador (o hacé <strong>clic derecho</strong> directo sobre cualquier barra)." : "Hacé clic en cualquier banderín sobre una tarea para leer su anotación."}</span>
+            <span>💡 <strong>Timeline interactiva:</strong> ${isAdmin() ? "Arrastrá el <strong>borde izquierdo o derecho</strong> de cualquier barra para agrandar o achicar su tiempo · Arrastrá el centro para mover fechas · Clic derecho (o 🚩) para poner un marcador." : "Hacé clic en cualquier banderín sobre una tarea para leer su anotación."}</span>
             <span>🚩 Marcadores en tareas: <strong>${totalMarkers}</strong></span>
           </div>
 
@@ -2960,13 +3125,11 @@
                   <div style="font-size:10.5px;color:var(--text-dim);">Mes arriba · Días abajo</div>
                 </div>
                 <div class="gantt-header-stack">
-                  <!-- FILA 1: MESES -->
                   <div class="gantt-months-row">
                     ${monthGroups.map(mg => `
                       <div class="gantt-month-block" style="flex:${mg.count};">${mg.label}</div>
                     `).join("")}
                   </div>
-                  <!-- FILA 2: DÍAS -->
                   <div class="gantt-days-row">
                     ${daysArray.map(d => `
                       <div class="gantt-day-header-col ${d.isWeekend?'weekend':''} ${d.isToday?'today':''}">
@@ -2988,7 +3151,6 @@
                 const leftPct = Math.min(98, (offsetIdx / totalCols) * 100);
                 const widthPct = Math.min(100 - leftPct, (spanCols / totalCols) * 100);
 
-                // Marcadores específicos de ESTA tarea (rigId === r.id)
                 const taskMarkers = (state.timelineMarkers || [])
                   .filter(mk => mk.rigId === r.id || (!mk.rigId && r.id === state.rigs[0]?.id))
                   .map(mk => {
@@ -3017,7 +3179,6 @@
                         `).join("")}
                       </div>
 
-                      <!-- BANDERINES JUSTO ARRIBA DE LA BARRA DE ESTA TAREA -->
                       ${taskMarkers.map(mk => `
                         <div class="gantt-task-pin"
                              style="left:${mk.pinLeftPct}%;background:${mk.color || '#ef4444'};border-color:${mk.color || '#ef4444'} transparent transparent transparent;"
@@ -3034,7 +3195,10 @@
                            onclick="onBarClickWithPinCheck(event, '${r.id}', '${originISO}', ${totalCols})"
                            oncontextmenu="onBarRightClickPin(event, '${r.id}', '${originISO}', ${totalCols})"
                            style="left:${leftPct}%;width:${widthPct}%;background:${complexityColorHex(r.complexity)};">
-                        <span>${r.name} (${m.progress}%)</span><span>→ ${m.endDate.slice(5)}</span>
+                        ${isAdmin() ? `<div class="gantt-resize-handle left" title="Arrastrar para cambiar inicio / duración" onmousedown="startGanttBarResize(event, '${r.id}', 'left', ${totalCols})"></div>` : ""}
+                        <span style="pointer-events:none;overflow:hidden;text-overflow:ellipsis;">${r.name} (${m.progress}%)</span>
+                        <span style="pointer-events:none;margin-left:6px;">${m.totalEstDays}d → ${m.endDate.slice(5)}</span>
+                        ${isAdmin() ? `<div class="gantt-resize-handle right" title="Arrastrar para agrandar o achicar duración" onmousedown="startGanttBarResize(event, '${r.id}', 'right', ${totalCols})"></div>` : ""}
                       </div>
                     </div>
                   </div>
@@ -3043,7 +3207,6 @@
             </div>
           </div>
 
-          <!-- PANEL DE ANOTACIONES DE LOS MARCADORES POR TAREA -->
           <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <strong style="font-size:13.5px;">📝 Anotaciones de Marcadores por Tarea (${totalMarkers})</strong>
