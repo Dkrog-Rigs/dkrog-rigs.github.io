@@ -907,6 +907,21 @@
       return `${yyyy}-${mm}-${dd}`;
     }
 
+    function countWorkdaysInclusive(startDateStr, endDateStr) {
+      const sp = startDateStr.split("-").map(Number);
+      const ep = endDateStr.split("-").map(Number);
+      const cur = new Date(sp[0], sp[1] - 1, sp[2]);
+      const end = new Date(ep[0], ep[1] - 1, ep[2]);
+      if (end <= cur) return 1;
+      let count = 0;
+      while (cur <= end) {
+        const day = cur.getDay();
+        if (day !== 0 && day !== 6) count++;
+        cur.setDate(cur.getDate() + 1);
+      }
+      return Math.max(1, count);
+    }
+
     function todayISO(offsetDays = 0) {
       const d = new Date();
       d.setDate(d.getDate() + offsetDays);
@@ -1162,10 +1177,10 @@
           }
         ],
         team: [
-          { id: "tm-1", name: "Martín Vega", role: "Lead Technical Director / Rigger", folderId: "tf-chars", capacityDays: 20 },
-          { id: "tm-2", name: "Sofía Navarro", role: "Senior Character Rigger (Moho)", folderId: "tf-chars", capacityDays: 20 },
-          { id: "tm-3", name: "Lucas Pereyra", role: "2D Rigger & Smart Bones Specialist", folderId: "tf-chars", capacityDays: 20 },
-          { id: "tm-4", name: "Camila Rojas", role: "Props & Vehicle Rigger", folderId: "tf-props", capacityDays: 20 }
+          { id: "tm-1", name: "Martín Vega", role: "Lead Technical Director / Rigger", folderId: "tf-chars", capacityDays: 20000 },
+          { id: "tm-2", name: "Sofía Navarro", role: "Senior Character Rigger (Moho)", folderId: "tf-chars", capacityDays: 20000 },
+          { id: "tm-3", name: "Lucas Pereyra", role: "2D Rigger & Smart Bones Specialist", folderId: "tf-chars", capacityDays: 20000 },
+          { id: "tm-4", name: "Camila Rojas", role: "Props & Vehicle Rigger", folderId: "tf-props", capacityDays: 20000 }
         ],
         customTemplates: [
           {
@@ -1787,17 +1802,15 @@
             ${state.team.map(member => {
               const assigned = state.rigs.filter(r => r.assigneeId === member.id && r.status !== "aprobado");
               const days = assigned.reduce((a, r) => a + calcRigMetrics(r).totalEstDays, 0);
-              const loadPct = Math.min(100, Math.round((days / member.capacityDays) * 100));
-              const overload = days > member.capacityDays;
               return `
                 <div style="margin-bottom:13px;">
                   <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px;">
                     <span><strong>${member.name}</strong> <span style="color:var(--text-dim)">(${assigned.length} activos)</span></span>
-                    <span style="color:${overload ? 'var(--red)' : 'var(--text-main)'};font-weight:700;">
-                      ${days.toFixed(1)} / ${member.capacityDays} días ${overload ? "⚠️ SOBRECARGA" : ""}
+                    <span style="color:var(--text-main);font-weight:700;">
+                      ${days.toFixed(1)} días asignados
                     </span>
                   </div>
-                  <div class="prog-track"><div class="prog-fill" style="width:${loadPct}%;background:${overload ? 'var(--red)' : 'var(--primary)'}"></div></div>
+                  <div class="prog-track"><div class="prog-fill" style="width:${Math.min(100, assigned.length * 15)}%;background:var(--primary)"></div></div>
                 </div>
               `;
             }).join("")}
@@ -2934,7 +2947,7 @@
       openMarkerModal("", clickedISO, rigId);
     }
 
-    // Redimensionar duración directamente desde los bordes izquierdo o derecho de la barra en el Gantt
+    // Redimensionar duración directamente hasta la columna exacta donde se suelta el puntero del mouse
     function startGanttBarResize(e, rigId, edge, totalCols) {
       if (!isAdmin()) return;
       e.preventDefault();
@@ -2944,35 +2957,39 @@
 
       const bar = e.currentTarget.closest(".gantt-bar");
       const cell = bar.closest(".gantt-timeline-cell");
-      const cellWidth = cell.getBoundingClientRect().width || 800;
-      const colPx = cellWidth / totalCols;
+      const cellRect = cell.getBoundingClientRect();
+      const colPx = cellRect.width / totalCols;
 
-      const startX = e.clientX;
       const origLeftPct = parseFloat(bar.style.left) || 0;
       const origWidthPct = parseFloat(bar.style.width) || (100 / totalCols);
-      const origBaseDays = Number(rig.baseEstDays) || 1;
+      const origStartCol = Math.round((origLeftPct / 100) * totalCols);
+      const origSpanCols = Math.max(1, Math.round((origWidthPct / 100) * totalCols));
+      const origEndCol = origStartCol + origSpanCols - 1;
+
       const origStartDate = rig.startDate;
       const origEndDate = calcRigMetrics(rig).endDate;
 
       bar.classList.add("resizing");
       bar.setAttribute("draggable", "false");
 
-      let currentDeltaDays = 0;
+      let targetCol = edge === "right" ? origEndCol : origStartCol;
+
+      function getColFromMouseX(clientX) {
+        const relX = Math.max(0, Math.min(cellRect.width - 1, clientX - cellRect.left));
+        return Math.floor(relX / colPx);
+      }
 
       function onMouseMove(ev) {
-        const dx = ev.clientX - startX;
-        currentDeltaDays = Math.round(dx / colPx);
-        const deltaPct = (currentDeltaDays / totalCols) * 100;
-        const minPct = (1 / totalCols) * 100;
-
+        const hoveredCol = getColFromMouseX(ev.clientX);
         if (edge === "right") {
-          const newW = Math.max(minPct, Math.min(100 - origLeftPct, origWidthPct + deltaPct));
-          bar.style.width = newW + "%";
+          targetCol = Math.max(origStartCol, Math.min(totalCols - 1, hoveredCol));
+          const newSpan = targetCol - origStartCol + 1;
+          bar.style.width = ((newSpan / totalCols) * 100) + "%";
         } else {
-          const maxShift = origWidthPct - minPct;
-          const clampedShift = Math.max(-origLeftPct, Math.min(maxShift, deltaPct));
-          bar.style.left = (origLeftPct + clampedShift) + "%";
-          bar.style.width = (origWidthPct - clampedShift) + "%";
+          targetCol = Math.max(0, Math.min(origEndCol, hoveredCol));
+          const newSpan = origEndCol - targetCol + 1;
+          bar.style.left = ((targetCol / totalCols) * 100) + "%";
+          bar.style.width = ((newSpan / totalCols) * 100) + "%";
         }
       }
 
@@ -2981,38 +2998,52 @@
         window.removeEventListener("mouseup", onMouseUp);
         bar.classList.remove("resizing");
         justResizedBar = true;
-        setTimeout(() => { justResizedBar = false; }, 120);
+        setTimeout(() => { justResizedBar = false; }, 150);
 
-        if (currentDeltaDays !== 0) {
-          if (edge === "right") {
-            const m = calcRigMetrics(rig);
-            const extraDays = Number((m.customsDays + m.layoutDays).toFixed(1));
-            const newTotal = Math.max(0.5 + extraDays, m.totalEstDays + currentDeltaDays);
-            rig.baseEstDays = Math.max(0.5, Number((newTotal - extraDays).toFixed(1)));
-            if (!rig.history) rig.history = [];
-            rig.history.unshift({
-              date: new Date().toLocaleString(),
-              action: `Duración ajustada desde Timeline (${currentDeltaDays > 0 ? "+" : ""}${currentDeltaDays}d → ${calcRigMetrics(rig).totalEstDays}d totales)`
-            });
-            markDirty();
-            showToast(`⏱️ ${rig.name}: ${calcRigMetrics(rig).totalEstDays}d totales (hasta ${calcRigMetrics(rig).endDate})`);
-          } else {
-            const sp = origStartDate.split("-").map(Number);
-            const newS = new Date(sp[0], sp[1] - 1, sp[2]);
-            newS.setDate(newS.getDate() + currentDeltaDays);
-            const newStartISO = `${newS.getFullYear()}-${String(newS.getMonth() + 1).padStart(2, "0")}-${String(newS.getDate()).padStart(2, "0")}`;
-            if (newStartISO <= origEndDate) {
-              rig.startDate = newStartISO;
-              rig.baseEstDays = Math.max(0.5, Number((origBaseDays - currentDeltaDays).toFixed(1)));
-              if (!rig.history) rig.history = [];
-              rig.history.unshift({
-                date: new Date().toLocaleString(),
-                action: `Inicio ajustado desde Timeline (${newStartISO}, ${calcRigMetrics(rig).totalEstDays}d totales)`
-              });
-              markDirty();
-              showToast(`📅 ${rig.name}: inicio ${newStartISO} (${calcRigMetrics(rig).totalEstDays}d)`);
-            }
-          }
+        const m = calcRigMetrics(rig);
+        const extraDays = Number((m.customsDays + m.layoutDays).toFixed(1));
+
+        if (edge === "right" && targetCol !== origEndCol) {
+          const deltaCalendarDays = targetCol - origEndCol;
+          const ep = origEndDate.split("-").map(Number);
+          const newEnd = new Date(ep[0], ep[1] - 1, ep[2]);
+          newEnd.setDate(newEnd.getDate() + deltaCalendarDays);
+          if (newEnd.getDay() === 6) newEnd.setDate(newEnd.getDate() + (deltaCalendarDays > 0 ? 2 : -1));
+          else if (newEnd.getDay() === 0) newEnd.setDate(newEnd.getDate() + (deltaCalendarDays > 0 ? 1 : -2));
+
+          const newEndISO = `${newEnd.getFullYear()}-${String(newEnd.getMonth() + 1).padStart(2, "0")}-${String(newEnd.getDate()).padStart(2, "0")}`;
+          const safeEndISO = newEndISO < origStartDate ? origStartDate : newEndISO;
+          const exactWorkdays = countWorkdaysInclusive(origStartDate, safeEndISO);
+
+          rig.baseEstDays = Math.max(0.5, Number((exactWorkdays - extraDays).toFixed(1)));
+          if (!rig.history) rig.history = [];
+          rig.history.unshift({
+            date: new Date().toLocaleString(),
+            action: `Fin ajustado en Timeline hasta ${calcRigMetrics(rig).endDate} (${calcRigMetrics(rig).totalEstDays}d hábiles)`
+          });
+          markDirty();
+          showToast(`⏱️ ${rig.name}: termina el ${calcRigMetrics(rig).endDate} (${calcRigMetrics(rig).totalEstDays}d hábiles)`);
+        } else if (edge === "left" && targetCol !== origStartCol) {
+          const deltaCalendarDays = targetCol - origStartCol;
+          const sp = origStartDate.split("-").map(Number);
+          const newStart = new Date(sp[0], sp[1] - 1, sp[2]);
+          newStart.setDate(newStart.getDate() + deltaCalendarDays);
+          if (newStart.getDay() === 6) newStart.setDate(newStart.getDate() + 2);
+          else if (newStart.getDay() === 0) newStart.setDate(newStart.getDate() + 1);
+
+          const newStartISO = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, "0")}-${String(newStart.getDate()).padStart(2, "0")}`;
+          const safeStartISO = newStartISO > origEndDate ? origEndDate : newStartISO;
+          const exactWorkdays = countWorkdaysInclusive(safeStartISO, origEndDate);
+
+          rig.startDate = safeStartISO;
+          rig.baseEstDays = Math.max(0.5, Number((exactWorkdays - extraDays).toFixed(1)));
+          if (!rig.history) rig.history = [];
+          rig.history.unshift({
+            date: new Date().toLocaleString(),
+            action: `Inicio ajustado en Timeline a ${safeStartISO} (${calcRigMetrics(rig).totalEstDays}d hábiles)`
+          });
+          markDirty();
+          showToast(`📅 ${rig.name}: inicia el ${safeStartISO} (${calcRigMetrics(rig).totalEstDays}d hábiles)`);
         }
         renderCurrentRoute();
       }
@@ -3240,15 +3271,17 @@
     let dragStartX = 0;
     function onGanttDragStart(e) { if (isAdmin()) dragStartX = e.clientX; }
     function onGanttDragEnd(e, rigId, totalCols) {
-      if (!isAdmin()) return;
-      const deltaDays = Math.round((e.clientX - dragStartX) / ((e.target.parentElement.offsetWidth || 800) / totalCols));
+      if (!isAdmin() || justResizedBar) return;
+      const cell = e.target.closest(".gantt-timeline-cell");
+      const cellWidth = (cell ? cell.getBoundingClientRect().width : e.target.parentElement.offsetWidth) || 800;
+      const deltaDays = Math.round((e.clientX - dragStartX) / (cellWidth / totalCols));
       if (deltaDays !== 0) {
         const rig = state.rigs.find(r => r.id === rigId);
         if (rig) {
           const p = rig.startDate.split("-").map(Number);
           const d = new Date(p[0], p[1]-1, p[2]);
           d.setDate(d.getDate() + deltaDays);
-          rig.startDate = d.toISOString().slice(0, 10);
+          rig.startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           markDirty(); renderCurrentRoute();
         }
       }
@@ -3303,7 +3336,7 @@
                   <option value="">Equipo General</option>
                   ${(state.teamFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("")}
                 </select>
-                <input type="number" id="tm-new-cap" value="20" min="5" max="60" style="width:85px;" />
+                <input type="number" id="tm-new-cap" value="20" min="5" max="20000" style="width:85px;" />
                 <button type="submit" class="btn btn-primary">+ Agregar</button>
               </form>
             </div>
@@ -3334,13 +3367,12 @@
                     const active = allAssigned.filter(r => r.status !== "aprobado");
                     const done = allAssigned.filter(r => r.status === "aprobado");
                     const pendingDays = active.reduce((a, r) => a + calcRigMetrics(r).totalEstDays, 0);
-                    const overload = pendingDays > member.capacityDays;
                     return `
-                      <div style="background:var(--bg-panel);border:1px solid ${overload?'var(--red)':'var(--border)'};border-radius:10px;padding:15px;">
+                      <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:15px;">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
                           <div><div style="font-size:16px;font-weight:800;">${member.name}</div><div style="font-size:12px;color:var(--text-muted);">${member.role}</div></div>
                           <div style="display:flex;gap:6px;align-items:center;">
-                            ${overload ? `<span class="badge st-bloqueado">⚠️ SOBRECARGA</span>` : `<span class="badge st-aprobado">OK</span>`}
+                            <span class="badge st-aprobado">Activo</span>
                             ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteTeamMember('${member.id}')">🗑️ Eliminar</button>` : ""}
                           </div>
                         </div>
