@@ -809,9 +809,12 @@
           <label>Seleccioná las tareas que van dentro de esta tarea grande (podés marcar varias):</label>
           <div id="gm-children-list" style="max-height:230px;overflow-y:auto;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;"></div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-          <button type="button" class="btn" onclick="closeGroupMasterModal()">Cancelar</button>
-          <button type="submit" class="btn btn-save">📦 Guardar Tarea Agrupada</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap;">
+          <button type="button" id="gm-delete-btn" class="btn btn-danger btn-sm" style="display:none;" onclick="deleteMasterGroupFromModal()">🗑️ Eliminar Grupo</button>
+          <div style="display:flex;gap:10px;margin-left:auto;">
+            <button type="button" class="btn" onclick="closeGroupMasterModal()">Cancelar</button>
+            <button type="submit" class="btn btn-save">📦 Guardar Tarea Agrupada</button>
+          </div>
         </div>
       </form>
     </div>
@@ -3822,7 +3825,10 @@
                           `).join("")}
                         </div>
                         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-                          ${isMaster && isAdmin() ? `<button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:10px;" onclick="openGroupMasterModal('${r.id}')" title="Editar tareas agrupadas">✏️</button>` : ""}
+                          ${isMaster && isAdmin() ? `
+                            <button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:10px;" onclick="openGroupMasterModal('${r.id}')" title="Editar tareas agrupadas">✏️</button>
+                            <button type="button" class="btn btn-sm btn-danger" style="padding:1px 5px;font-size:10px;" onclick="deleteMasterGroup('${r.id}')" title="Eliminar grupo (libera las tareas internas)">🗑️</button>
+                          ` : ""}
                           ${group.isSubtask && isAdmin() ? `<button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:10px;" onclick="removeSubtaskFromMaster('${r.id}')" title="Sacar del grupo">📤</button>` : ""}
                           <span style="font-size:11px;color:var(--text-muted);">${Number(totalGroupDays.toFixed(1))}d</span>
                         </div>
@@ -3834,6 +3840,9 @@
                               📤 Separar ${extra.name}
                             </button>
                           `).join("")}
+                          <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;font-size:10px;" onclick="dissolveTimelineRowGroup('${group.gid}')" title="Eliminar agrupación de esta fila y separar todas sus tareas">
+                            🗑️ Eliminar grupo de fila
+                          </button>
                         </div>
                       ` : (isAdmin()
                         ? `<div class="gantt-row-controls" style="display:flex;gap:5px;margin-top:3px;"><input type="date" value="${r.startDate}" onchange="shiftRigStart('${r.id}', this.value)" style="padding:2px 5px;font-size:11px;" /><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', -1)">-1d</button><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', 1)">+1d</button></div>`
@@ -4559,6 +4568,8 @@
       const gmCatSel = document.getElementById("gm-category");
       gmCatSel.innerHTML = gmCats.map(c => `<option value="${c}">${c}</option>`).join("");
 
+      const gmDelBtn = document.getElementById("gm-delete-btn");
+      if (gmDelBtn) gmDelBtn.style.display = existing ? "inline-flex" : "none";
       document.getElementById("gm-edit-id").value = existing ? existing.id : "";
       document.getElementById("gm-name").value = existing ? existing.name : "";
       const targetCat = existing ? existing.category : defaultCat;
@@ -4654,6 +4665,42 @@
       collapsedMasterIds.delete(masterRig.id);
       closeGroupMasterModal();
       commitSave(`Tarea agrupada "${name}" guardada (${selectedIds.length} tareas)`);
+    }
+
+
+    function deleteMasterGroup(masterId) {
+      if (!isAdmin()) return;
+      const master = state.rigs.find(r => r.id === masterId);
+      if (!master) return;
+      const childCount = getChildRigs(masterId).length;
+      if (confirm(`¿Eliminar el grupo "${master.name}"?\n\nLas ${childCount} tarea(s) internas NO se borrarán, quedarán sueltas nuevamente en la Timeline.`)) {
+        pushUndoSnapshot(`Eliminar grupo ${master.name}`);
+        state.rigs.forEach(r => {
+          if (r.parentRigId === masterId) delete r.parentRigId;
+        });
+        state.rigs = state.rigs.filter(r => r.id !== masterId);
+        collapsedMasterIds.delete(masterId);
+        closeGroupMasterModal();
+        commitSave(`Grupo "${master.name}" eliminado (tareas internas conservadas)`);
+      }
+    }
+
+    function deleteMasterGroupFromModal() {
+      const editId = document.getElementById("gm-edit-id").value;
+      if (editId) deleteMasterGroup(editId);
+    }
+
+    function dissolveTimelineRowGroup(gid) {
+      if (!isAdmin()) return;
+      pushUndoSnapshot("Eliminar grupo de fila en Timeline");
+      state.rigs.forEach(r => {
+        if ((r.timelineRowGroupId || r.id) === gid && r.timelineRowGroupId) {
+          delete r.timelineRowGroupId;
+        }
+      });
+      markDirty();
+      preserveGanttScrollAndRender();
+      showToast("🗑️ Grupo de fila eliminado; todas las tareas volvieron a sus filas individuales");
     }
 
     function removeSubtaskFromMaster(childId) {
