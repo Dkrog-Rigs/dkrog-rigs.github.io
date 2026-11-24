@@ -937,7 +937,7 @@
     }
 
     function generateShortCode(permission) {
-      const prefix = permission === "descarga" ? "D" : "L";
+      const prefix = permission === "descarga" ? "D" : (permission === "comentarista" ? "C" : "L");
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let code = "";
       for (let i = 0; i < 4; i++) {
@@ -1252,16 +1252,17 @@
       const userEmail = (currentAuthUser && currentAuthUser.email) ? currentAuthUser.email.toLowerCase().trim() : "";
       const adminEmails = (state.adminEmails || []).map(e => String(e).toLowerCase().trim()).filter(Boolean);
 
-      // Si hay un código ?v=L-XXXX o ?v=D-XXXX explícito en la URL, siempre respeta ese modo invitado
+      // Si hay un código ?v=L-XXXX, ?v=D-XXXX o ?v=C-XXXX explícito en la URL, siempre respeta ese modo invitado
       if (code) {
         const isDownload = code.startsWith("D-");
+        const isCommenter = code.startsWith("C-");
         const foundLink = (state.shareLinks || []).find(l => l.id.toUpperCase() === code);
         if (foundLink && !foundLink.active) {
           readOnlySession = { active: true, revoked: true, permission: foundLink.permission, label: foundLink.label, token: code };
           return;
         }
-        const perm = foundLink ? foundLink.permission : (isDownload ? "descarga" : "lector");
-        const label = foundLink ? foundLink.label : (perm === "descarga" ? "Invitado (Descarga)" : "Invitado (Solo Lector)");
+        const perm = foundLink ? foundLink.permission : (isDownload ? "descarga" : (isCommenter ? "comentarista" : "lector"));
+        const label = foundLink ? foundLink.label : (perm === "descarga" ? "Invitado (Descarga)" : (perm === "comentarista" ? "Invitado (Comentarista)" : "Invitado (Solo Lector)"));
         readOnlySession = { active: true, revoked: false, permission: perm, label, token: code };
         return;
       }
@@ -1291,8 +1292,13 @@
       return readOnlySession.permission === "descarga";
     }
 
+    function canCommentObservations() {
+      if (isAdmin()) return true;
+      return readOnlySession.permission === "comentarista";
+    }
+
     function markDirty() {
-      if (!isAdmin()) return;
+      if (!isAdmin() && !canCommentObservations()) return;
       isDirty = true;
       updateTopbarUI();
     }
@@ -1383,10 +1389,14 @@
     }
 
     async function commitSave(toastMsg = "Guardado correctamente") {
-      if (!isAdmin()) {
+      if (!isAdmin() && !canCommentObservations()) {
         alert("🔒 Modo Lector activo: No tenés permisos para modificar ni guardar cambios.");
         return;
       }
+
+      const prevGantt = document.querySelector(".gantt-container");
+      if (prevGantt) savedGanttScrollLeft = prevGantt.scrollLeft;
+      const prevWinY = window.scrollY;
 
       if (HAS_GAS_API) {
         isSavingCloud = true;
@@ -1399,6 +1409,9 @@
             if (res && res.driveFolderUrl) DRIVE_FOLDER_URL = res.driveFolderUrl;
             updateTopbarUI();
             renderCurrentRoute();
+            const c = document.querySelector(".gantt-container");
+            if (c && savedGanttScrollLeft !== null) c.scrollLeft = savedGanttScrollLeft;
+            window.scrollTo(0, prevWinY);
             showToast("☁️ " + toastMsg);
           })
           .withFailureHandler((err) => {
@@ -1424,6 +1437,9 @@
         isDirty = false;
         updateTopbarUI();
         renderCurrentRoute();
+        const c = document.querySelector(".gantt-container");
+        if (c && savedGanttScrollLeft !== null) c.scrollLeft = savedGanttScrollLeft;
+        window.scrollTo(0, prevWinY);
         showToast("🔒 " + toastMsg);
       }
     }
@@ -1533,20 +1549,23 @@
 
       if (!isAdmin()) {
         const isDl = readOnlySession.permission === "descarga";
+        const isComm = readOnlySession.permission === "comentarista";
         bannerSlot.innerHTML = `
-          <div class="readonly-banner ${isDl ? 'download-mode' : ''}">
+          <div class="readonly-banner ${isDl || isComm ? 'download-mode' : ''}">
             <span>
-              ${isDl
-                ? `📥 MODO LECTOR + DESCARGA (${readOnlySession.label}) — Podés navegar todo el workspace y descargar los archivos habilitados.`
-                : `🔒 MODO LECTOR (${readOnlySession.label}) — Solo visualización, sin permisos de edición ni descarga.`}
+              ${isComm
+                ? `💬 MODO COMENTARISTA (${readOnlySession.label}) — Podés navegar las tareas y dejar comentarios en las casillas de Observaciones.`
+                : (isDl
+                  ? `📥 MODO LECTOR + DESCARGA (${readOnlySession.label}) — Podés navegar todo el workspace y descargar los archivos habilitados.`
+                  : `🔒 MODO LECTOR (${readOnlySession.label}) — Solo visualización, sin permisos de edición ni descarga.`)}
             </span>
             <span style="font-size:11.5px;opacity:0.9;">Código: ${readOnlySession.token}</span>
           </div>
         `;
-        if (modeTitle) modeTitle.textContent = isDl ? "Invitado (Descarga)" : "Invitado (Solo Lector)";
+        if (modeTitle) modeTitle.textContent = isComm ? "Invitado (Comentarista)" : (isDl ? "Invitado (Descarga)" : "Invitado (Solo Lector)");
         actionsSlot.innerHTML = `
-          <span class="badge ${isDl ? 'st-progreso' : 'st-revision'}">
-            ${isDl ? "📥 Lectura + Descarga" : "🔒 Solo Lectura"}
+          <span class="badge ${isComm ? 'st-aprobado' : (isDl ? 'st-progreso' : 'st-revision')}">
+            ${isComm ? "💬 Comentarista" : (isDl ? "📥 Lectura + Descarga" : "🔒 Solo Lectura")}
           </span>
           ${currentAuthUser ? `<button class="btn btn-sm btn-danger" onclick="handleFirebaseLogout()">🚪 Salir</button>` : ""}
         `;
@@ -1594,7 +1613,7 @@
         { route: "#/vehicles", label: "Vehículos y props", icon: "🚒", badge: vehCount },
         { route: "#/customs", label: "Custom", icon: "🦴", badge: customsRigsCount },
         { route: "#/timeline", label: "Timeline / Gantt", icon: "📅" },
-        { route: "#/reviews", label: "Revisiones Layout", icon: "👁️", badge: revCount },
+        { route: "#/reviews", label: "Observaciones", icon: "👁️", badge: revCount },
         { section: "Equipo y Agenda" },
         { route: "#/team", label: "Equipo & Carpetas", icon: "👥", badge: state.team.length },
         { route: "#/reminders", label: "Recordatorios & Cal.", icon: "🔔", badge: remCount },
@@ -1661,7 +1680,7 @@
           renderTimeline(container);
           break;
         case "#/reviews":
-          document.getElementById("topbar-title").textContent = "Revisiones con Director de Layout";
+          document.getElementById("topbar-title").textContent = "Observaciones y Revisiones";
           renderReviewsGlobal(container);
           break;
         case "#/team":
@@ -2184,7 +2203,7 @@
           <button class="subtab ${activeRigTab==='files'?'active':''}" onclick="activeRigTab='files';renderCurrentRoute()">2. Archivos (.moho, .ai, .psd, .png) (${filesCount})</button>
           <button class="subtab ${activeRigTab==='customs'?'active':''}" onclick="activeRigTab='customs';renderCurrentRoute()">3. Customs & Smart Bones (${(rig.customs||[]).length})</button>
           <button class="subtab ${activeRigTab==='stages'?'active':''}" onclick="activeRigTab='stages';renderCurrentRoute()">4. Etapas (14)</button>
-          <button class="subtab ${activeRigTab==='layout'?'active':''}" onclick="activeRigTab='layout';renderCurrentRoute()">5. Revisión Layout (${(rig.layoutReviews||[]).length})</button>
+          <button class="subtab ${activeRigTab==='layout'?'active':''}" onclick="activeRigTab='layout';renderCurrentRoute()">5. Observaciones (${(rig.layoutReviews||[]).length})</button>
           <button class="subtab ${activeRigTab==='history'?'active':''}" onclick="activeRigTab='history';renderCurrentRoute()">6. Historial (${(rig.history||[]).length})</button>
         </div>
 
@@ -2248,11 +2267,28 @@
           </div>
           <div class="form-group" style="margin-top:14px;">
             <label>Observaciones Técnicas de Moho</label>
-            <textarea id="ed-notes" ${dis} oninput="markDirty()">${rig.notes || ""}</textarea>
+            <textarea id="ed-notes" ${(isAdmin() || canCommentObservations()) ? "" : "disabled"} oninput="markDirty()">${rig.notes || ""}</textarea>
           </div>
-          ${isAdmin() ? `<div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn btn-save" onclick="saveRigGeneral('${rig.id}')">💾 Guardar Datos Generales</button></div>` : ""}
+          ${isAdmin()
+            ? `<div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn btn-save" onclick="saveRigGeneral('${rig.id}')">💾 Guardar Datos Generales</button></div>`
+            : (canCommentObservations()
+              ? `<div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn btn-save" onclick="saveRigNotesComment('${rig.id}')">💬 Guardar Observaciones</button></div>`
+              : "")}
         </div>
       `;
+    }
+
+    function saveRigNotesComment(rigId) {
+      if (!isAdmin() && !canCommentObservations()) return;
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (!rig) return;
+      rig.notes = document.getElementById("ed-notes").value;
+      if (!rig.history) rig.history = [];
+      rig.history.unshift({
+        date: new Date().toLocaleString(),
+        action: `Observaciones técnicas comentadas por ${isAdmin() ? "Administrador" : readOnlySession.label}`
+      });
+      commitSave(`Observaciones de ${rig.name} guardadas`);
     }
 
     function onEditComplexityChange(val) {
@@ -2670,18 +2706,20 @@
 
     function renderRigLayoutTab(el, rig) {
       const nextRound = (rig.layoutReviews || []).length + 1;
+      const canComment = isAdmin() || canCommentObservations();
+      const defaultReviewer = isAdmin() ? "Director de Layout" : (readOnlySession?.label || "Comentarista");
       el.innerHTML = `
         <div class="panel">
           <div class="panel-header">
-            <div class="panel-title">👁️ Control de Calidad — Revisión con Director de Layout</div>
-            ${isAdmin() ? `<button class="btn btn-save btn-sm" onclick="commitSave('Revisiones guardadas')">💾 Guardar Revisiones</button>` : ""}
+            <div class="panel-title">👁️ Observaciones y Control de Calidad</div>
+            ${canComment ? `<button class="btn btn-save btn-sm" onclick="commitSave('Observaciones guardadas')">💾 Guardar Observaciones</button>` : ""}
           </div>
-          ${isAdmin() ? `
+          ${canComment ? `
             <form onsubmit="addLayoutReview(event, '${rig.id}')" style="background:var(--bg-card);padding:15px;border-radius:9px;border:1px solid var(--border);margin-bottom:18px;">
-              <div style="font-weight:700;color:var(--yellow);margin-bottom:10px;">+ Registrar Ronda de Revisión #${nextRound}</div>
+              <div style="font-weight:700;color:var(--yellow);margin-bottom:10px;">+ Registrar Observación / Ronda #${nextRound}</div>
               <div class="form-grid">
                 <div class="form-group"><label>Fecha</label><input type="date" id="lr-date" value="${todayISO(0)}" required /></div>
-                <div class="form-group"><label>Responsable</label><input type="text" id="lr-reviewer" value="Director de Layout" required /></div>
+                <div class="form-group"><label>Responsable</label><input type="text" id="lr-reviewer" value="${defaultReviewer}" required /></div>
                 <div class="form-group"><label>Días Est. (1-3d)</label><input type="number" step="0.5" min="0.5" id="lr-est" value="2" required /></div>
                 <div class="form-group">
                   <label>Estado</label>
@@ -2729,7 +2767,7 @@
 
     function addLayoutReview(e, rigId) {
       e.preventDefault();
-      if (!isAdmin()) return;
+      if (!isAdmin() && !canCommentObservations()) return;
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) return;
       const major = document.getElementById("lr-major").checked;
@@ -2815,7 +2853,61 @@
       }
     }
 
-    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60, ganttPinMode = false, ganttZoom = "days", ganttEndYear = 2040;
+    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60, ganttPinMode = false, ganttZoom = "days", ganttEndYear = 2040, savedGanttScrollLeft = null;
+
+    function preserveGanttScrollAndRender() {
+      const container = document.querySelector(".gantt-container");
+      if (container) savedGanttScrollLeft = container.scrollLeft;
+      const winY = window.scrollY;
+      renderCurrentRoute();
+      requestAnimationFrame(() => {
+        const newContainer = document.querySelector(".gantt-container");
+        if (newContainer && savedGanttScrollLeft !== null) {
+          newContainer.scrollLeft = savedGanttScrollLeft;
+        }
+        window.scrollTo(0, winY);
+      });
+    }
+
+    function bindGanttMiddleMousePan() {
+      const container = document.querySelector(".gantt-container");
+      if (!container || container.dataset.middlePanBound === "1") return;
+      container.dataset.middlePanBound = "1";
+
+      let isPanning = false;
+      let startX = 0;
+      let startScrollLeft = 0;
+
+      container.addEventListener("mousedown", (e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          isPanning = true;
+          startX = e.clientX;
+          startScrollLeft = container.scrollLeft;
+          container.style.cursor = "grabbing";
+          document.body.style.userSelect = "none";
+        }
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isPanning) return;
+        const dx = e.clientX - startX;
+        container.scrollLeft = startScrollLeft - dx;
+        savedGanttScrollLeft = container.scrollLeft;
+      });
+
+      window.addEventListener("mouseup", (e) => {
+        if (isPanning && e.button === 1) {
+          isPanning = false;
+          container.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+
+      container.addEventListener("scroll", () => {
+        savedGanttScrollLeft = container.scrollLeft;
+      });
+    }
     const MONTH_NAMES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     const MONTH_SHORT_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -3116,7 +3208,7 @@
           markDirty();
           showToast(`📅 ${rig.name}: inicia el ${safeStartISO} (${calcRigMetrics(rig).totalEstDays}d hábiles)`);
         }
-        renderCurrentRoute();
+        preserveGanttScrollAndRender();
       }
 
       window.addEventListener("mousemove", onMouseMove);
@@ -3355,6 +3447,11 @@
           </div>
         </div>
       `;
+      setTimeout(() => {
+        bindGanttMiddleMousePan();
+        const c = document.querySelector(".gantt-container");
+        if (c && savedGanttScrollLeft !== null) c.scrollLeft = savedGanttScrollLeft;
+      }, 0);
     }
 
     let dragStartX = 0;
@@ -3371,11 +3468,11 @@
           const d = new Date(p[0], p[1]-1, p[2]);
           d.setDate(d.getDate() + deltaDays);
           rig.startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          markDirty(); renderCurrentRoute();
+          markDirty(); preserveGanttScrollAndRender();
         }
       }
     }
-    function shiftRigStart(rigId, newDate) { const r = state.rigs.find(x => x.id === rigId); if (r && newDate) { r.startDate = newDate; markDirty(); renderCurrentRoute(); } }
+    function shiftRigStart(rigId, newDate) { const r = state.rigs.find(x => x.id === rigId); if (r && newDate) { r.startDate = newDate; markDirty(); preserveGanttScrollAndRender(); } }
     function adjustRigDays(rigId, delta) {
       const r = state.rigs.find(x => x.id === rigId);
       if (!r) return;
@@ -3396,7 +3493,7 @@
         r.baseEstDays = Math.max(0.5, Number(r.baseEstDays) + delta);
       }
       markDirty();
-      renderCurrentRoute();
+      preserveGanttScrollAndRender();
     }
 
     function renderReviewsGlobal(el) {
@@ -3404,7 +3501,7 @@
       state.rigs.forEach(r => { (r.layoutReviews || []).forEach(lr => reviews.push({ rig: r, lr })); });
       el.innerHTML = `
         <div class="panel">
-          <div class="panel-header"><div class="panel-title">👁️ Historial Consolidado de Revisiones con Director de Layout</div></div>
+          <div class="panel-header"><div class="panel-title">👁️ Historial Consolidado de Observaciones</div></div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Rig</th><th>Ronda</th><th>Fecha</th><th>Observaciones</th><th>Correcciones</th><th>Estado</th><th>Acciones</th></tr></thead>
@@ -3598,9 +3695,9 @@
         <div class="panel" style="border-left:4px solid var(--primary);">
           <div class="panel-header">
             <div>
-              <div class="panel-title">🔗 Enlaces Compartidos Cortos (Modo Lector y Descarga — Cero Edición)</div>
+              <div class="panel-title">🔗 Enlaces Compartidos Cortos (Lector, Descarga y Comentarista)</div>
               <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">
-                Cada enlace agrega el parámetro corto <code>?v=L-XXXX</code> (Solo ver) o <code>?v=D-XXXX</code> (Ver y descargar archivos habilitados).
+                Cada enlace agrega el parámetro corto <code>?v=L-XXXX</code> (Solo ver), <code>?v=D-XXXX</code> (Ver y descargar) o <code>?v=C-XXXX</code> (Comentarista en Observaciones).
               </div>
             </div>
           </div>
@@ -3616,6 +3713,7 @@
                 <select id="shr-perm">
                   <option value="lector">🔒 Solo ver (Lector — No edita ni descarga archivos)</option>
                   <option value="descarga">📥 Ver y descargar archivos habilitados (Descarga — No edita nada)</option>
+                  <option value="comentarista">💬 Comentarista (Deja comentarios en Observaciones de tareas)</option>
                 </select>
               </div>
             </div>
@@ -3651,6 +3749,7 @@
                         <select onchange="changeSharePermission('${lk.id}', this.value)" style="font-weight:700;">
                           <option value="lector" ${lk.permission==="lector"?"selected":""}>🔒 Solo ver (Lector)</option>
                           <option value="descarga" ${lk.permission==="descarga"?"selected":""}>📥 Descarga de archivos (Descarga)</option>
+                          <option value="comentarista" ${lk.permission==="comentarista"?"selected":""}>💬 Comentarista (Observaciones)</option>
                         </select>
                       </td>
                       <td>
@@ -3698,7 +3797,8 @@
       if (lk) {
         lk.permission = perm;
         const suffix = lk.id.includes("-") ? lk.id.split("-")[1] : lk.id;
-        lk.id = (perm === "descarga" ? "D-" : "L-") + suffix;
+        const prefix = perm === "descarga" ? "D-" : (perm === "comentarista" ? "C-" : "L-");
+        lk.id = prefix + suffix;
         commitSave(`Permiso actualizado a ${perm} (?v=${lk.id})`);
       }
     }
