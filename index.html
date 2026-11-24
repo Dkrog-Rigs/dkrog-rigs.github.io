@@ -436,16 +436,27 @@
     .gantt-day-col { flex: 1; border-right: 1px solid rgba(34,48,79,0.45); }
     .gantt-day-col.weekend { background: rgba(0,0,0,0.28); }
     .gantt-day-col.today { background: rgba(24,134,240,0.08); }
-    .gantt-timeline-cell { position: relative; min-height: 64px; display: flex; align-items: flex-end; padding-bottom: 8px; }
+    .gantt-timeline-cell { position: relative; min-height: var(--gantt-row-h, 64px); display: flex; align-items: flex-end; padding-bottom: 6px; }
     .gantt-header .gantt-timeline-cell { min-height: auto; align-items: stretch; padding-bottom: 0; }
-    .gantt-bar {
-      position: absolute; bottom: 8px; height: 28px; border-radius: 6px;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 11px; font-size: 11.5px; font-weight: 700; color: #fff;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-      cursor: grab; user-select: none; z-index: 3;
-      overflow: hidden; white-space: nowrap;
+    .gantt-row.compact-row .gantt-info { padding: 4px 10px; gap: 1px; }
+    .gantt-row.compact-row .gantt-row-controls { display: none; }
+    .gantt-row.drag-over-row { border-top: 2px solid var(--cyan); background: rgba(6, 182, 212, 0.12); }
+    .gantt-row-drag-handle {
+      cursor: grab; color: var(--text-dim); font-size: 13px; padding: 0 5px 0 0;
+      user-select: none; display: inline-flex; align-items: center;
     }
+    .gantt-row-drag-handle:hover { color: var(--cyan); }
+    .gantt-bar {
+      position: absolute; bottom: 6px; height: var(--gantt-bar-h, 28px); border-radius: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px; font-size: 11.5px; font-weight: 700; color: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.42);
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: grab; user-select: none; z-index: 4;
+      overflow: hidden; white-space: nowrap;
+      transition: box-shadow 0.12s, transform 0.08s;
+    }
+    .gantt-bar:hover { z-index: 14; box-shadow: 0 4px 14px rgba(0,0,0,0.65); border-color: rgba(255,255,255,0.65); }
     .gantt-bar.resizing {
       opacity: 0.92;
       outline: 2px solid #fff;
@@ -2853,7 +2864,100 @@
       }
     }
 
-    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60, ganttPinMode = false, ganttZoom = "days", ganttEndYear = 2040, savedGanttScrollLeft = null;
+    let ganttCatFilter = "ALL", ganttAssigneeFilter = "ALL", ganttDaysRange = 60, ganttPinMode = false, ganttZoom = "days", ganttEndYear = 2040, savedGanttScrollLeft = null, ganttRowHeight = 64, ganttOverlapMode = true, draggedGanttRowId = null, draggedGanttBarRigId = null;
+
+    function changeGanttRowHeight(deltaOrVal, isExact = false) {
+      if (isExact) {
+        ganttRowHeight = Number(deltaOrVal) || 64;
+      } else {
+        ganttRowHeight = Math.max(36, Math.min(140, ganttRowHeight + deltaOrVal));
+      }
+      preserveGanttScrollAndRender();
+    }
+
+    function onGanttRowDragStart(e, rigId) {
+      if (!isAdmin()) return;
+      e.stopPropagation();
+      draggedGanttRowId = rigId;
+      draggedGanttBarRigId = null;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", "ROW:" + rigId);
+    }
+
+    function onGanttRowDragOver(e) {
+      if (!isAdmin() || (!draggedGanttRowId && !draggedGanttBarRigId)) return;
+      e.preventDefault();
+      e.currentTarget.classList.add("drag-over-row");
+    }
+
+    function onGanttRowDragLeave(e) {
+      e.currentTarget.classList.remove("drag-over-row");
+    }
+
+    function onGanttRowDrop(e, targetRigId, originISO = "", totalCols = 60) {
+      e.preventDefault();
+      e.currentTarget.classList.remove("drag-over-row");
+      if (!isAdmin()) return;
+
+      // Caso 1: Reordenar fila arrastrando el tirador ⋮⋮
+      if (draggedGanttRowId) {
+        const srcId = draggedGanttRowId;
+        draggedGanttRowId = null;
+        if (srcId === targetRigId) return;
+        const fromIdx = state.rigs.findIndex(r => r.id === srcId);
+        const toIdx = state.rigs.findIndex(r => r.id === targetRigId);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const [moved] = state.rigs.splice(fromIdx, 1);
+          state.rigs.splice(toIdx, 0, moved);
+          markDirty();
+          preserveGanttScrollAndRender();
+          showToast(`↕️ Fila "${moved.name}" movida`);
+        }
+        return;
+      }
+
+      // Caso 2: Modo Tom's Planner — Arrastrar una barra de tarea encima de otra fila para moverla/superponerla en esa fila y fecha
+      if (draggedGanttBarRigId) {
+        const barRigId = draggedGanttBarRigId;
+        draggedGanttBarRigId = null;
+        const rig = state.rigs.find(r => r.id === barRigId);
+        const targetRig = state.rigs.find(r => r.id === targetRigId);
+        if (!rig || !targetRig) return;
+
+        // Calcular desplazamiento horizontal en días
+        const cell = e.currentTarget.querySelector(".gantt-timeline-cell");
+        const cellWidth = (cell ? cell.getBoundingClientRect().width : 800) || 800;
+        const deltaDays = Math.round((e.clientX - dragStartX) / (cellWidth / totalCols));
+        if (deltaDays !== 0) {
+          const p = rig.startDate.split("-").map(Number);
+          const d = new Date(p[0], p[1] - 1, p[2]);
+          d.setDate(d.getDate() + deltaDays);
+          rig.startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        }
+
+        // Si se soltó sobre otra fila distinta, vincular/agrupar en la misma fila visual (Tom's Planner multi-tarea por fila)
+        if (barRigId !== targetRigId) {
+          rig.timelineRowGroupId = targetRig.timelineRowGroupId || targetRig.id;
+          if (!targetRig.timelineRowGroupId) targetRig.timelineRowGroupId = targetRig.id;
+          showToast(`📚 "${rig.name}" superpuesta en la fila de "${targetRig.name}" (${rig.startDate})`);
+        } else if (deltaDays !== 0) {
+          showToast(`📅 "${rig.name}" movida al ${rig.startDate}`);
+        }
+        markDirty();
+        preserveGanttScrollAndRender();
+      }
+    }
+
+    function detachRigFromRowGroup(rigId) {
+      if (!isAdmin()) return;
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (rig) {
+        delete rig.timelineRowGroupId;
+        markDirty();
+        preserveGanttScrollAndRender();
+        showToast(`📤 "${rig.name}" separada a su propia fila`);
+      }
+    }
 
     function preserveGanttScrollAndRender() {
       const container = document.querySelector(".gantt-container");
@@ -3276,39 +3380,71 @@
       const colPxWidth = ganttZoom === "years" ? 3.2 : (ganttZoom === "months" ? 9 : 34);
       const gridMinWidth = Math.max(1200, 260 + Math.round(totalCols * colPxWidth));
       const totalMarkers = (state.timelineMarkers || []).length;
+      const isCompact = ganttRowHeight <= 46;
+      const baseBarH = Math.max(20, Math.min(38, Math.round(ganttRowHeight * 0.46)));
+
+      // Agrupar filas estilo Tom's Planner (permite múltiples tareas superpuestas en la misma fila o en paralelo)
+      const rowGroups = [];
+      const visitedGroupIds = new Set();
+      filtered.forEach(r => {
+        const gid = r.timelineRowGroupId || r.id;
+        if (visitedGroupIds.has(gid)) return;
+        visitedGroupIds.add(gid);
+        const members = filtered.filter(x => (x.timelineRowGroupId || x.id) === gid);
+        rowGroups.push({ gid, primary: members[0], members });
+      });
 
       el.innerHTML = `
         <div class="panel" style="margin-bottom:14px;">
           <div class="panel-header" style="margin-bottom:0;">
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-              <select onchange="ganttCatFilter=this.value;renderCurrentRoute()">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select onchange="ganttCatFilter=this.value;preserveGanttScrollAndRender()">
                 <option value="ALL">Todas las categorías</option>
                 <option value="Personaje Principal" ${ganttCatFilter==="Personaje Principal"?"selected":""}>Personaje Principal</option>
                 <option value="Personaje Secundario" ${ganttCatFilter==="Personaje Secundario"?"selected":""}>Personaje Secundario</option>
                 <option value="Vehículo" ${ganttCatFilter==="Vehículo"?"selected":""}>Vehículo y Prop</option>
                 <option value="Custom" ${ganttCatFilter==="Custom"?"selected":""}>Custom</option>
               </select>
-              <select onchange="ganttAssigneeFilter=this.value;renderCurrentRoute()">
+              <select onchange="ganttAssigneeFilter=this.value;preserveGanttScrollAndRender()">
                 <option value="ALL">Todos los responsables</option>
                 ${state.team.map(t => `<option value="${t.id}" ${ganttAssigneeFilter===t.id?"selected":""}>${t.name}</option>`).join("")}
               </select>
-              <select onchange="ganttZoom=this.value;renderCurrentRoute()" title="Escala visual del cronograma (hasta 2040)">
-                <option value="days" ${ganttZoom==="days"?"selected":""}>Escala: Días (Detalle hasta 2040)</option>
+              <select onchange="ganttZoom=this.value;preserveGanttScrollAndRender()" title="Escala visual del cronograma (hasta 2040)">
+                <option value="days" ${ganttZoom==="days"?"selected":""}>Escala: Días (2026 – 2040)</option>
                 <option value="months" ${ganttZoom==="months"?"selected":""}>Escala: Meses (2026 – 2040)</option>
                 <option value="years" ${ganttZoom==="years"?"selected":""}>Escala: Multi-Año (2026 – 2040)</option>
               </select>
               <select onchange="if(this.value) scrollGanttToYear(this.value)" title="Saltar directamente a un año">
-                <option value="">📅 Ir al año (2026–2040)...</option>
+                <option value="">📅 Ir al año...</option>
                 <option value="TODAY">📍 Hoy (${todayStr})</option>
                 ${availableYears.map(yr => `<option value="${yr}">Año ${yr}</option>`).join("")}
               </select>
-              <span style="font-size:12px;color:var(--text-muted);"><strong style="color:#10b981">■ Baja</strong> · <strong style="color:#f59e0b">■ Media</strong> · <strong style="color:#f97316">■ Alta</strong> · <strong style="color:#8b5cf6">■ Muy Alta</strong></span>
+
+              <!-- Control de Altura de Filas (Achicar / Agrandar) -->
+              <div style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;padding:3px 7px;" title="Achicar o agrandar la altura de las filas">
+                <span style="font-size:11px;color:var(--text-muted);font-weight:700;">↕️ Filas:</span>
+                <button type="button" class="btn btn-sm" style="padding:2px 7px;" onclick="changeGanttRowHeight(-12)" title="Achicar filas">−</button>
+                <select onchange="changeGanttRowHeight(this.value, true)" style="padding:2px 5px;font-size:11.5px;border:none;background:transparent;">
+                  <option value="40" ${ganttRowHeight<=44?"selected":""}>Compacta (40px)</option>
+                  <option value="64" ${ganttRowHeight>44 && ganttRowHeight<=76?"selected":""}>Normal (64px)</option>
+                  <option value="96" ${ganttRowHeight>76?"selected":""}>Grande (96px)</option>
+                </select>
+                <button type="button" class="btn btn-sm" style="padding:2px 7px;" onclick="changeGanttRowHeight(12)" title="Agrandar filas">+</button>
+              </div>
+
+              <!-- Modo Tom's Planner: Mostrar superposición en paralelo -->
+              <button type="button"
+                      class="btn btn-sm ${ganttOverlapMode ? 'btn-primary' : ''}"
+                      onclick="ganttOverlapMode=!ganttOverlapMode;preserveGanttScrollAndRender()"
+                      title="Activa la vista tipo Tom's Planner para mover tareas entre filas y visualizar superposiciones en paralelo">
+                ${ganttOverlapMode ? '📚 Tom’s Planner: Superposición ON' : '📚 Tom’s Planner: Superposición OFF'}
+              </button>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               ${isAdmin() ? `
                 <button class="btn btn-sm ${ganttPinMode ? 'btn-danger' : 'btn-primary'}"
-                        onclick="ganttPinMode=!ganttPinMode;renderCurrentRoute()">
-                  ${ganttPinMode ? '🎯 Hacé clic sobre la barra de la tarea... (Cancelar)' : '🚩 Colocar Marcador en Tarea'}
+                        onclick="ganttPinMode=!ganttPinMode;preserveGanttScrollAndRender()">
+                  ${ganttPinMode ? '🎯 Hacé clic sobre la barra... (Cancelar)' : '🚩 Marcador'}
                 </button>
                 <button class="btn btn-save btn-sm" onclick="commitSave('Cronograma Gantt guardado')">💾 Guardar Timeline</button>
               ` : ""}
@@ -3318,8 +3454,8 @@
 
         <div class="panel" style="padding:12px;">
           <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span>💡 <strong>Timeline interactiva (2026 → 2040):</strong> ${isAdmin() ? "Arrastrá el <strong>borde izquierdo o derecho</strong> de cualquier barra para agrandar o achicar su tiempo · Arrastrá el centro para mover fechas · Clic derecho (o 🚩) para poner un marcador." : "Hacé clic en cualquier banderín sobre una tarea para leer su anotación."}</span>
-            <span>🚩 Marcadores en tareas: <strong>${totalMarkers}</strong></span>
+            <span>💡 <strong>Modo Tom’s Planner:</strong> ${isAdmin() ? "Arrastrá una barra de tarea hacia <strong>otra fila</strong> o sobre otra fecha para <strong>mover y superponer tareas</strong> · Arrastrá <strong>⋮⋮</strong> para reordenar filas · Arrastrá bordes para estirar duración · Clic rueda para desplazarte." : "Hacé clic en cualquier banderín sobre una tarea para leer su anotación."}</span>
+            <span>🚩 Marcadores: <strong>${totalMarkers}</strong> · <strong style="color:#10b981">■ Baja</strong> <strong style="color:#f59e0b">■ Media</strong> <strong style="color:#f97316">■ Alta</strong> <strong style="color:#8b5cf6">■ Muy Alta</strong></span>
           </div>
 
           <div class="gantt-container">
@@ -3347,19 +3483,45 @@
                 </div>
               </div>
 
-              ${filtered.map(r => {
-                const m = calcRigMetrics(r);
-                const sParts = r.startDate.split("-").map(Number);
-                const sDate = new Date(sParts[0], sParts[1]-1, sParts[2]);
-                const eParts = m.endDate.split("-").map(Number);
-                const eDate = new Date(eParts[0], eParts[1]-1, eParts[2]);
-                const offsetIdx = Math.max(0, Math.round((sDate - originDate) / 86400000));
-                const spanCols = Math.max(1, Math.round((eDate - sDate) / 86400000) + 1);
-                const leftPct = Math.min(98, (offsetIdx / totalCols) * 100);
-                const widthPct = Math.min(100 - leftPct, (spanCols / totalCols) * 100);
+              ${rowGroups.map(group => {
+                const r = group.primary;
+                const members = group.members;
+                const totalGroupDays = members.reduce((acc, item) => acc + calcRigMetrics(item).totalEstDays, 0);
 
+                // Asignar carriles (lanes) verticales cuando varias tareas están en la misma fila y se superponen en fechas (Tom's Planner style)
+                const memberBars = members.map((item, mIdx) => {
+                  const m = calcRigMetrics(item);
+                  const sParts = item.startDate.split("-").map(Number);
+                  const sDate = new Date(sParts[0], sParts[1]-1, sParts[2]);
+                  const eParts = m.endDate.split("-").map(Number);
+                  const eDate = new Date(eParts[0], eParts[1]-1, eParts[2]);
+                  const offsetIdx = Math.max(0, Math.round((sDate - originDate) / 86400000));
+                  const spanCols = Math.max(1, Math.round((eDate - sDate) / 86400000) + 1);
+                  const leftPct = Math.min(98, (offsetIdx / totalCols) * 100);
+                  const widthPct = Math.min(100 - leftPct, (spanCols / totalCols) * 100);
+                  return { item, m, offsetIdx, endIdx: offsetIdx + spanCols - 1, leftPct, widthPct, lane: mIdx };
+                });
+
+                // Calcular carriles sin colisión visual pero superpuestos en la misma fila
+                const lanesEnd = [];
+                memberBars.forEach(mb => {
+                  let placedLane = lanesEnd.findIndex(endCol => mb.offsetIdx > endCol);
+                  if (placedLane === -1) {
+                    placedLane = lanesEnd.length;
+                    lanesEnd.push(mb.endIdx);
+                  } else {
+                    lanesEnd[placedLane] = mb.endIdx;
+                  }
+                  mb.lane = placedLane;
+                });
+                const totalLanes = Math.max(1, lanesEnd.length);
+                const rowEffectiveH = totalLanes > 1
+                  ? Math.max(ganttRowHeight, totalLanes * (baseBarH + 6) + 16)
+                  : ganttRowHeight;
+
+                const memberIds = new Set(members.map(x => x.id));
                 const taskMarkers = (state.timelineMarkers || [])
-                  .filter(mk => mk.rigId === r.id || (!mk.rigId && r.id === state.rigs[0]?.id))
+                  .filter(mk => memberIds.has(mk.rigId) || (!mk.rigId && r.id === state.rigs[0]?.id))
                   .map(mk => {
                     const mp = mk.date.split("-").map(Number);
                     const mDate = new Date(mp[0], mp[1] - 1, mp[2]);
@@ -3371,10 +3533,32 @@
                   .filter(Boolean);
 
                 return `
-                  <div class="gantt-row">
+                  <div class="gantt-row ${isCompact ? 'compact-row' : ''}"
+                       style="--gantt-row-h:${rowEffectiveH}px;--gantt-bar-h:${baseBarH}px;"
+                       ondragover="onGanttRowDragOver(event)"
+                       ondragleave="onGanttRowDragLeave(event)"
+                       ondrop="onGanttRowDrop(event, '${r.id}', '${originISO}', ${totalCols})">
                     <div class="gantt-info">
-                      <div style="display:flex;justify-content:space-between;"><a href="#/rig/${r.id}" style="color:#fff;font-weight:700;text-decoration:none;">${r.name}</a><span style="font-size:11px;color:var(--text-muted);">${m.totalEstDays}d</span></div>
-                      ${isAdmin() ? `<div style="display:flex;gap:5px;margin-top:3px;"><input type="date" value="${r.startDate}" onchange="shiftRigStart('${r.id}', this.value)" style="padding:2px 5px;font-size:11px;" /><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', -1)">-1d</button><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', 1)">+1d</button></div>` : `<div style="font-size:11px;color:var(--text-dim);">${r.startDate} → ${m.endDate}</div>`}
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+                        <div style="display:flex;align-items:center;min-width:0;gap:3px;flex-wrap:wrap;">
+                          ${isAdmin() ? `<span class="gantt-row-drag-handle" draggable="true" ondragstart="onGanttRowDragStart(event, '${r.id}')" title="Arrastrar para mover fila arriba/abajo">⋮⋮</span>` : ""}
+                          ${members.map((mbItem, idx) => `
+                            <a href="#/rig/${mbItem.id}" style="color:#fff;font-weight:700;text-decoration:none;font-size:${members.length>1?'12px':'13px'};">${mbItem.name}</a>${idx < members.length - 1 ? '<span style="color:var(--cyan);font-weight:800;">+</span>' : ''}
+                          `).join("")}
+                        </div>
+                        <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;">${Number(totalGroupDays.toFixed(1))}d</span>
+                      </div>
+                      ${members.length > 1 && isAdmin() ? `
+                        <div class="gantt-row-controls" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;">
+                          ${members.slice(1).map(extra => `
+                            <button type="button" class="btn btn-sm" style="padding:1px 6px;font-size:10px;border-color:var(--cyan);color:var(--cyan);" onclick="detachRigFromRowGroup('${extra.id}')" title="Separar ${extra.name} a su propia fila">
+                              📤 Separar ${extra.name}
+                            </button>
+                          `).join("")}
+                        </div>
+                      ` : (isAdmin()
+                        ? `<div class="gantt-row-controls" style="display:flex;gap:5px;margin-top:3px;"><input type="date" value="${r.startDate}" onchange="shiftRigStart('${r.id}', this.value)" style="padding:2px 5px;font-size:11px;" /><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', -1)">-1d</button><button class="btn btn-sm" style="padding:2px 6px;" onclick="adjustRigDays('${r.id}', 1)">+1d</button></div>`
+                        : `<div class="gantt-row-controls" style="font-size:11px;color:var(--text-dim);">${r.startDate} → ${calcRigMetrics(r).endDate}</div>`)}
                     </div>
                     <div class="gantt-timeline-cell">
                       <div class="gantt-days-bg"
@@ -3393,25 +3577,30 @@
 
                       ${taskMarkers.map(mk => `
                         <div class="gantt-task-pin"
-                             style="left:${mk.pinLeftPct}%;background:${mk.color || '#ef4444'};border-color:${mk.color || '#ef4444'} transparent transparent transparent;"
+                             style="left:${mk.pinLeftPct}%;bottom:${totalLanes * (baseBarH + 5) + 4}px;background:${mk.color || '#ef4444'};border-color:${mk.color || '#ef4444'} transparent transparent transparent;"
                              title="${mk.date} — ${mk.title}${mk.notes ? ': ' + mk.notes : ''}"
                              onclick="event.stopPropagation();openMarkerModal('${mk.id}')">
                           🚩 ${mk.title}
                         </div>
                       `).join("")}
 
-                      <div class="gantt-bar ${m.isLate?'late':''} ${ganttPinMode?'pin-mode':''}"
-                           draggable="${isAdmin() && !ganttPinMode}"
-                           ondragstart="onGanttDragStart(event)"
-                           ondragend="onGanttDragEnd(event, '${r.id}', ${totalCols})"
-                           onclick="onBarClickWithPinCheck(event, '${r.id}', '${originISO}', ${totalCols})"
-                           oncontextmenu="onBarRightClickPin(event, '${r.id}', '${originISO}', ${totalCols})"
-                           style="left:${leftPct}%;width:${widthPct}%;background:${complexityColorHex(r.complexity)};">
-                        ${isAdmin() ? `<div class="gantt-resize-handle left" title="Arrastrar para cambiar inicio / duración" onmousedown="startGanttBarResize(event, '${r.id}', 'left', ${totalCols})"></div>` : ""}
-                        <span style="pointer-events:none;overflow:hidden;text-overflow:ellipsis;">${r.name} (${m.progress}%)</span>
-                        <span style="pointer-events:none;margin-left:6px;">${m.totalEstDays}d → ${m.endDate.slice(5)}</span>
-                        ${isAdmin() ? `<div class="gantt-resize-handle right" title="Arrastrar para agrandar o achicar duración" onmousedown="startGanttBarResize(event, '${r.id}', 'right', ${totalCols})"></div>` : ""}
-                      </div>
+                      ${memberBars.map(({ item, m, leftPct, widthPct, lane }) => {
+                        const bottomPx = 6 + lane * (baseBarH + 5);
+                        return `
+                          <div class="gantt-bar ${m.isLate?'late':''} ${ganttPinMode?'pin-mode':''}"
+                               draggable="${isAdmin() && !ganttPinMode}"
+                               ondragstart="onGanttDragStart(event, '${item.id}')"
+                               ondragend="onGanttDragEnd(event, '${item.id}', ${totalCols})"
+                               onclick="onBarClickWithPinCheck(event, '${item.id}', '${originISO}', ${totalCols})"
+                               oncontextmenu="onBarRightClickPin(event, '${item.id}', '${originISO}', ${totalCols})"
+                               style="left:${leftPct}%;width:${widthPct}%;bottom:${bottomPx}px;background:${complexityColorHex(item.complexity)};${ganttOverlapMode && totalLanes > 1 ? 'opacity:0.92;' : ''}">
+                            ${isAdmin() ? `<div class="gantt-resize-handle left" title="Arrastrar para cambiar inicio / duración" onmousedown="startGanttBarResize(event, '${item.id}', 'left', ${totalCols})"></div>` : ""}
+                            <span style="pointer-events:none;overflow:hidden;text-overflow:ellipsis;">${item.name} (${m.progress}%)</span>
+                            <span style="pointer-events:none;margin-left:6px;">${m.totalEstDays}d → ${m.endDate.slice(5)}</span>
+                            ${isAdmin() ? `<div class="gantt-resize-handle right" title="Arrastrar para agrandar o achicar duración" onmousedown="startGanttBarResize(event, '${item.id}', 'right', ${totalCols})"></div>` : ""}
+                          </div>
+                        `;
+                      }).join("")}
                     </div>
                   </div>
                 `;
@@ -3455,9 +3644,22 @@
     }
 
     let dragStartX = 0;
-    function onGanttDragStart(e) { if (isAdmin()) dragStartX = e.clientX; }
+    function onGanttDragStart(e, rigId = "") {
+      if (!isAdmin()) return;
+      e.stopPropagation();
+      dragStartX = e.clientX;
+      draggedGanttBarRigId = rigId;
+      draggedGanttRowId = null;
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", "BAR:" + rigId);
+      }
+    }
     function onGanttDragEnd(e, rigId, totalCols) {
       if (!isAdmin() || justResizedBar) return;
+      // Si ya fue procesado por onGanttRowDrop, no duplicar
+      if (!draggedGanttBarRigId) return;
+      draggedGanttBarRigId = null;
       const cell = e.target.closest(".gantt-timeline-cell");
       const cellWidth = (cell ? cell.getBoundingClientRect().width : e.target.parentElement.offsetWidth) || 800;
       const deltaDays = Math.round((e.clientX - dragStartX) / (cellWidth / totalCols));
