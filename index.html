@@ -977,6 +977,14 @@
       "Controles personalizados adicionales"
     ];
 
+    const TIMELINE_CATEGORIES = [
+      "PP-VC-",
+      "PP-VD-",
+      "SPOT-",
+      "CANAL TV-",
+      "SHORT-"
+    ];
+
     const COMPLEXITY_DEFAULTS = {
       "Baja": 3,
       "Media": 7,
@@ -2245,7 +2253,7 @@
           ? r.category === "Vehículo"
           : (mode === "customs"
               ? r.category === "Custom"
-              : (r.category !== "Vehículo" && r.category !== "Custom"));
+              : (r.category !== "Vehículo" && r.category !== "Custom" && !TIMELINE_CATEGORIES.includes(r.category)));
         const matchText = !filterText || r.name.toLowerCase().includes(filterText.toLowerCase());
         const matchComp = filterComplexity === "ALL" || r.complexity === filterComplexity;
         const matchSt = filterStatus === "ALL" || r.status === filterStatus;
@@ -2478,7 +2486,7 @@
             <div class="form-group">
               <label>Categoría</label>
               <select id="ed-category" ${dis} onchange="markDirty()">
-                ${["Personaje Principal", "Personaje Secundario", "Episódico", "Vehículo", "Custom"].map(c => `<option value="${c}" ${rig.category===c?"selected":""}>${c}</option>`).join("")}
+                ${(TIMELINE_CATEGORIES.includes(rig.category) ? TIMELINE_CATEGORIES : DEFAULT_RIG_CATEGORIES).map(c => `<option value="${c}" ${rig.category===c?"selected":""}>${c}</option>`).join("")}
               </select>
             </div>
             <div class="form-group">
@@ -3647,10 +3655,15 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <select onchange="ganttCatFilter=this.value;preserveGanttScrollAndRender()">
                 <option value="ALL">Todas las categorías</option>
-                <option value="Personaje Principal" ${ganttCatFilter==="Personaje Principal"?"selected":""}>Personaje Principal</option>
-                <option value="Personaje Secundario" ${ganttCatFilter==="Personaje Secundario"?"selected":""}>Personaje Secundario</option>
-                <option value="Vehículo" ${ganttCatFilter==="Vehículo"?"selected":""}>Vehículo y Prop</option>
-                <option value="Custom" ${ganttCatFilter==="Custom"?"selected":""}>Custom</option>
+                <optgroup label="Categorías de Timeline">
+                  ${TIMELINE_CATEGORIES.map(tc => `<option value="${tc}" ${ganttCatFilter===tc?"selected":""}>${tc}</option>`).join("")}
+                </optgroup>
+                <optgroup label="Categorías Generales">
+                  <option value="Personaje Principal" ${ganttCatFilter==="Personaje Principal"?"selected":""}>Personaje Principal</option>
+                  <option value="Personaje Secundario" ${ganttCatFilter==="Personaje Secundario"?"selected":""}>Personaje Secundario</option>
+                  <option value="Vehículo" ${ganttCatFilter==="Vehículo"?"selected":""}>Vehículo y Prop</option>
+                  <option value="Custom" ${ganttCatFilter==="Custom"?"selected":""}>Custom</option>
+                </optgroup>
               </select>
               <select onchange="ganttAssigneeFilter=this.value;preserveGanttScrollAndRender()">
                 <option value="ALL">Todos los responsables</option>
@@ -3689,7 +3702,10 @@
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               ${isAdmin() ? `
-                <button class="btn btn-sm" style="border-color:var(--cyan);color:var(--cyan);" onclick="openGroupMasterModal()">
+                <button class="btn btn-sm btn-primary" onclick="openNewRigModal('PP-VC-', true)">
+                  + Nueva Tarea
+                </button>
+                <button class="btn btn-sm" style="border-color:var(--cyan);color:var(--cyan);" onclick="openGroupMasterModal('', 'PP-VC-', true)">
                   📦 Agrupar Tareas
                 </button>
                 <button class="btn btn-sm ${ganttPinMode ? 'btn-danger' : 'btn-primary'}"
@@ -4445,9 +4461,21 @@
     // =========================================================================
     // 13. CREACIÓN, DUPLICACIÓN Y ELIMINACIÓN DE RIGS
     // =========================================================================
-    function openNewRigModal(defaultCat = "Personaje Principal") {
+    const DEFAULT_RIG_CATEGORIES = [
+      "Personaje Principal",
+      "Personaje Secundario",
+      "Episódico",
+      "Vehículo",
+      "Custom"
+    ];
+
+    function openNewRigModal(defaultCat = "Personaje Principal", isTimelineContext = false) {
       if (!isAdmin()) return;
-      document.getElementById("nr-category").value = defaultCat;
+      const onTimeline = isTimelineContext || (window.location.hash || "").startsWith("#/timeline");
+      const cats = onTimeline ? TIMELINE_CATEGORIES : DEFAULT_RIG_CATEGORIES;
+      const catSel = document.getElementById("nr-category");
+      catSel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("");
+      catSel.value = cats.includes(defaultCat) ? defaultCat : cats[0];
       document.getElementById("nr-start").value = todayISO(0);
       document.getElementById("nr-folder").innerHTML = `<option value="">Sin carpeta</option>` + (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
       document.getElementById("nr-assignee").innerHTML = `<option value="">Sin asignar</option>` + state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
@@ -4519,16 +4547,22 @@
       renderCurrentRoute();
     }
 
-    function openGroupMasterModal(masterId = "", defaultCat = "Personaje Principal") {
+    function openGroupMasterModal(masterId = "", defaultCat = "Personaje Principal", isTimelineContext = false) {
       if (!isAdmin()) return;
       const modal = document.getElementById("group-master-modal");
       document.getElementById("gm-folder").innerHTML = `<option value="">Sin carpeta</option>` + (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
       document.getElementById("gm-assignee").innerHTML = `<option value="">Sin asignar</option>` + state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
 
       const existing = masterId ? state.rigs.find(r => r.id === masterId) : null;
+      const onTimeline = isTimelineContext || (window.location.hash || "").startsWith("#/timeline") || (existing && TIMELINE_CATEGORIES.includes(existing.category));
+      const gmCats = onTimeline ? TIMELINE_CATEGORIES : ["Personaje Principal", "Personaje Secundario", "Vehículo", "Custom"];
+      const gmCatSel = document.getElementById("gm-category");
+      gmCatSel.innerHTML = gmCats.map(c => `<option value="${c}">${c}</option>`).join("");
+
       document.getElementById("gm-edit-id").value = existing ? existing.id : "";
       document.getElementById("gm-name").value = existing ? existing.name : "";
-      document.getElementById("gm-category").value = existing ? existing.category : defaultCat;
+      const targetCat = existing ? existing.category : defaultCat;
+      gmCatSel.value = gmCats.includes(targetCat) ? targetCat : gmCats[0];
       document.getElementById("gm-folder").value = existing ? (existing.folderId || "") : "";
       document.getElementById("gm-assignee").value = existing ? (existing.assigneeId || "") : "";
 
