@@ -457,6 +457,44 @@
       transition: box-shadow 0.12s, transform 0.08s;
     }
     .gantt-bar:hover { z-index: 14; box-shadow: 0 4px 14px rgba(0,0,0,0.65); border-color: rgba(255,255,255,0.65); }
+    .gantt-bar.master-bar {
+      background: linear-gradient(90deg, #0ea5e9, #6366f1) !important;
+      border: 1.5px solid rgba(255,255,255,0.65);
+      box-shadow: 0 3px 12px rgba(14, 165, 233, 0.45);
+    }
+    .gantt-row.master-row {
+      background: rgba(14, 165, 233, 0.06);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+    }
+    .gantt-row.subtask-row .gantt-info {
+      padding-left: 24px;
+      border-left: 3px solid var(--cyan);
+      background: #0b1324;
+    }
+    .master-toggle-btn {
+      background: rgba(6, 182, 212, 0.18);
+      border: 1px solid rgba(6, 182, 212, 0.45);
+      color: #67e8f9;
+      border-radius: 5px;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .master-toggle-btn:hover { background: rgba(6, 182, 212, 0.32); }
+    .subtask-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 7px;
+      padding: 5px 9px;
+      font-size: 12px;
+    }
     .gantt-bar.resizing {
       opacity: 0.92;
       outline: 2px solid #fff;
@@ -730,6 +768,50 @@
         <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;">
           <button type="button" class="btn" onclick="closeNewRigModal()">Cancelar</button>
           <button type="submit" class="btn btn-save">💾 Guardar Ficha</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL AGRUPAR TAREAS EN UNA TAREA MÁS GRANDE -->
+  <div class="modal-backdrop" id="group-master-modal">
+    <div class="modal-box" style="max-width:560px;">
+      <div class="panel-header">
+        <div class="panel-title">📦 Agrupar Tareas en una Tarea Más Grande (Desplegable)</div>
+        <button class="btn btn-sm" onclick="closeGroupMasterModal()">✕</button>
+      </div>
+      <form onsubmit="handleSaveMasterGroup(event)">
+        <input type="hidden" id="gm-edit-id" />
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Nombre de la Tarea Principal / Grupo *</label>
+            <input type="text" id="gm-name" required placeholder="Ej: Pack Protagonistas Episodio 1 / Escena Bosque" />
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="gm-category">
+              <option value="Personaje Principal">Personaje Principal</option>
+              <option value="Personaje Secundario">Personaje Secundario</option>
+              <option value="Vehículo">Vehículo</option>
+              <option value="Custom">Custom</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Carpeta</label>
+            <select id="gm-folder"></select>
+          </div>
+          <div class="form-group">
+            <label>Responsable Principal</label>
+            <select id="gm-assignee"></select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+          <label>Seleccioná las tareas que van dentro de esta tarea grande (podés marcar varias):</label>
+          <div id="gm-children-list" style="max-height:230px;overflow-y:auto;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+          <button type="button" class="btn" onclick="closeGroupMasterModal()">Cancelar</button>
+          <button type="submit" class="btn btn-save">📦 Guardar Tarea Agrupada</button>
         </div>
       </form>
     </div>
@@ -1236,6 +1318,57 @@
     let readOnlySession = null;
     let isDirty = false;
     let isSavingCloud = false;
+    let undoStack = [];
+    const MAX_UNDO_STEPS = 40;
+    let collapsedMasterIds = new Set();
+
+    function pushUndoSnapshot(label = "Acción") {
+      if (!isAdmin() && !canCommentObservations()) return;
+      try {
+        const snap = JSON.stringify(state);
+        if (undoStack.length > 0 && undoStack[undoStack.length - 1].snap === snap) return;
+        undoStack.push({ snap, label, time: new Date().toLocaleTimeString() });
+        if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+      } catch (e) {}
+    }
+
+    function undoLastAction() {
+      if (!isAdmin() && !canCommentObservations()) {
+        showToast("🔒 Modo Lector: No podés deshacer cambios");
+        return;
+      }
+      if (undoStack.length === 0) {
+        showToast("↩️ No hay acciones recientes para retroceder");
+        return;
+      }
+      const prevGantt = document.querySelector(".gantt-container");
+      if (prevGantt) savedGanttScrollLeft = prevGantt.scrollLeft;
+      const prevWinY = window.scrollY;
+
+      const entry = undoStack.pop();
+      try {
+        state = JSON.parse(entry.snap);
+        normalizeStateArrays();
+        isDirty = true;
+        updateTopbarUI();
+        renderCurrentRoute();
+        const c = document.querySelector(".gantt-container");
+        if (c && savedGanttScrollLeft !== null) c.scrollLeft = savedGanttScrollLeft;
+        window.scrollTo(0, prevWinY);
+        showToast(`↩️ Retrocedido (${undoStack.length} paso(s) disponibles)`);
+      } catch (e) {
+        console.error("Error al deshacer:", e);
+      }
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        e.preventDefault();
+        undoLastAction();
+      }
+    });
     let activeRigTab = "general";
     let filterText = "";
     let filterComplexity = "ALL";
@@ -1308,8 +1441,9 @@
       return readOnlySession.permission === "comentarista";
     }
 
-    function markDirty() {
+    function markDirty(skipSnapshot = false) {
       if (!isAdmin() && !canCommentObservations()) return;
+      if (!skipSnapshot) pushUndoSnapshot();
       isDirty = true;
       updateTopbarUI();
     }
@@ -1404,6 +1538,7 @@
         alert("🔒 Modo Lector activo: No tenés permisos para modificar ni guardar cambios.");
         return;
       }
+      pushUndoSnapshot(toastMsg);
 
       const prevGantt = document.querySelector(".gantt-container");
       if (prevGantt) savedGanttScrollLeft = prevGantt.scrollLeft;
@@ -1494,7 +1629,39 @@
     // =========================================================================
     // 5. CÁLCULOS DE TIEMPO, CUSTOMS Y FECHAS DE ENTREGA
     // =========================================================================
+    function getChildRigs(masterId) {
+      return (state.rigs || []).filter(r => r.parentRigId === masterId);
+    }
+
     function calcRigMetrics(rig) {
+      const children = getChildRigs(rig.id);
+      if (rig.isMasterGroup && children.length > 0) {
+        let minStart = rig.startDate || todayISO(0);
+        let maxEnd = minStart;
+        let sumDays = 0;
+        let sumProg = 0;
+        children.forEach((ch, i) => {
+          const cm = calcRigMetrics(ch);
+          if (i === 0 || (ch.startDate && ch.startDate < minStart)) minStart = ch.startDate;
+          if (i === 0 || (cm.endDate && cm.endDate > maxEnd)) maxEnd = cm.endDate;
+          sumDays += cm.totalEstDays;
+          sumProg += cm.progress;
+        });
+        rig.startDate = minStart;
+        const progress = Math.round(sumProg / children.length);
+        const isLate = rig.status !== "aprobado" && maxEnd && maxEnd < todayISO(0);
+        return {
+          customsDays: 0,
+          layoutDays: 0,
+          totalEstDays: Number(sumDays.toFixed(1)),
+          endDate: maxEnd,
+          progress,
+          isLate,
+          isMaster: true,
+          childCount: children.length
+        };
+      }
+
       const customsDays = (rig.customs || []).reduce((acc, c) => acc + (Number(c.estDays) || 0), 0);
       const layoutDays = (rig.layoutReviews || []).reduce((acc, r) => {
         return acc + (Number(r.estDays) || 0) + (r.majorDesignChange ? (Number(r.extraDays) || 0) : 0);
@@ -1602,6 +1769,12 @@
         <a href="#/reminders" class="btn btn-sm">🔔 ${pendingReminders}</a>
         <a href="#/share" class="btn btn-sm">🔗 Compartir Link</a>
         <button class="btn btn-primary btn-sm" onclick="openNewRigModal()">+ Nuevo Rig</button>
+        <button class="btn btn-sm"
+                onclick="undoLastAction()"
+                ${undoStack.length === 0 ? 'style="opacity:0.55;"' : ''}
+                title="Retroceder último cambio (Ctrl + Z) — ${undoStack.length} paso(s) en historial">
+          ↩️ Retroceder${undoStack.length > 0 ? ` (${undoStack.length})` : ''}
+        </button>
         <button class="btn btn-save btn-sm ${isDirty ? 'has-dirty' : ''}" onclick="commitSave('Cambios guardados')">
           💾 ${isDirty ? 'Guardar *' : 'Guardar'}
         </button>
@@ -1943,22 +2116,41 @@
                   <span>${col.label}</span>
                   <span class="nav-badge">${colRigs.length}</span>
                 </div>
-                ${colRigs.map(r => {
+                ${colRigs.filter(r => !r.parentRigId || r.isMasterGroup).map(r => {
                   const m = calcRigMetrics(r);
                   const filesCount = (r.files || []).length;
+                  const children = r.isMasterGroup ? getChildRigs(r.id) : [];
+                  const isExpanded = !collapsedMasterIds.has(r.id);
                   return `
                     <div class="kanban-card"
+                         style="${r.isMasterGroup ? 'border:1.5px solid var(--cyan);background:linear-gradient(180deg, rgba(14,165,233,0.12), var(--bg-card));' : ''}"
                          draggable="${isAdmin()}"
                          ondragstart="onKanbanDragStart(event, '${r.id}')"
                          onclick="navigate('#/rig/${r.id}')">
                       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
-                        <strong style="font-size:14.5px;color:#fff;">${r.name}</strong>
-                        <span class="badge ${complexityClass(r.complexity)}">${r.complexity}</span>
+                        <strong style="font-size:14.5px;color:#fff;">${r.isMasterGroup ? '📦 ' : ''}${r.name}</strong>
+                        ${r.isMasterGroup
+                          ? `<button type="button" class="master-toggle-btn" onclick="event.stopPropagation();toggleMasterExpand('${r.id}')">${isExpanded ? '▼' : '▶'} ${children.length} tareas</button>`
+                          : `<span class="badge ${complexityClass(r.complexity)}">${r.complexity}</span>`}
                       </div>
                       <div style="font-size:11.5px;color:var(--cyan);">📁 ${getRigFolderName(r.folderId)}</div>
+                      ${r.isMasterGroup && isExpanded && children.length > 0 ? `
+                        <div style="display:flex;flex-direction:column;gap:5px;padding:7px;background:rgba(9,14,26,0.65);border-radius:7px;border:1px solid var(--border);" onclick="event.stopPropagation()">
+                          ${children.map(ch => {
+                            const cm = calcRigMetrics(ch);
+                            return `
+                              <div onclick="navigate('#/rig/${ch.id}')" style="display:flex;justify-content:space-between;align-items:center;padding:4px 7px;border-radius:5px;background:var(--bg-panel);font-size:11.5px;cursor:pointer;">
+                                <span style="color:#e2e8f0;font-weight:600;">↳ ${ch.name}</span>
+                                <span style="color:var(--cyan);font-weight:700;">${cm.progress}% · ${cm.totalEstDays}d</span>
+                              </div>
+                            `;
+                          }).join("")}
+                          ${isAdmin() ? `<button type="button" class="btn btn-sm" style="padding:2px 6px;font-size:10.5px;margin-top:2px;" onclick="openGroupMasterModal('${r.id}')">✏️ Editar grupo</button>` : ""}
+                        </div>
+                      ` : ""}
                       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);">
                         <span>👤 ${getAssigneeName(r.assigneeId)}</span>
-                        <span>🦴 ${(r.customs||[]).length} · 📎 ${filesCount}</span>
+                        <span>${r.isMasterGroup ? `📦 Grupo (${children.length})` : `🦴 ${(r.customs||[]).length} · 📎 ${filesCount}`}</span>
                       </div>
                       <div>
                         <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
@@ -1983,18 +2175,25 @@
     }
 
     function renderRigTableRows(list) {
-      if (list.length === 0) {
+      const topLevel = list.filter(r => !r.parentRigId || r.isMasterGroup);
+      if (topLevel.length === 0) {
         return `<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:18px;">No hay rigs en esta carpeta / filtro.</td></tr>`;
       }
-      return list.map(r => {
+      const renderSingleRow = (r, isChild = false) => {
         const m = calcRigMetrics(r);
         const filesCount = (r.files || []).length;
-        return `
-          <tr>
-            <td>
-              <a href="#/rig/${r.id}" style="color:#fff;font-weight:700;text-decoration:none;font-size:14px;">${r.name}</a>
-              ${m.isLate ? `<span class="badge st-bloqueado" style="margin-left:5px;">ATRASADO</span>` : ""}
-              ${filesCount > 0 ? `<span class="ext-pill" style="margin-left:5px;">📎 ${filesCount}</span>` : ""}
+        const children = r.isMasterGroup ? getChildRigs(r.id) : [];
+        const isExpanded = !collapsedMasterIds.has(r.id);
+
+        const mainTr = `
+          <tr style="${r.isMasterGroup ? 'background:rgba(14,165,233,0.08);' : (isChild ? 'background:rgba(9,14,26,0.45);' : '')}">
+            <td style="${isChild ? 'padding-left:28px;' : ''}">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                ${r.isMasterGroup ? `<button type="button" class="master-toggle-btn" onclick="toggleMasterExpand('${r.id}')">${isExpanded ? '▼' : '▶'} ${children.length}</button>` : (isChild ? `<span style="color:var(--cyan);font-weight:800;">↳</span>` : "")}
+                <a href="#/rig/${r.id}" style="color:#fff;font-weight:700;text-decoration:none;font-size:${r.isMasterGroup ? '14.5px' : '13.5px'};">${r.isMasterGroup ? '📦 ' : ''}${r.name}</a>
+                ${m.isLate ? `<span class="badge st-bloqueado">ATRASADO</span>` : ""}
+                ${filesCount > 0 ? `<span class="ext-pill">📎 ${filesCount}</span>` : ""}
+              </div>
             </td>
             <td>
               ${isAdmin() ? `
@@ -2004,7 +2203,7 @@
                 </select>
               ` : `<span style="font-size:12px;color:var(--cyan);">📁 ${getRigFolderName(r.folderId)}</span>`}
             </td>
-            <td><span class="badge ${complexityClass(r.complexity)}">${r.complexity}</span></td>
+            <td>${r.isMasterGroup ? `<span class="badge st-progreso">Grupo (${children.length})</span>` : `<span class="badge ${complexityClass(r.complexity)}">${r.complexity}</span>`}</td>
             <td>${getAssigneeName(r.assigneeId)}</td>
             <td><strong>${(r.customs || []).length}</strong> <span style="color:var(--cyan);font-size:11.5px;">(+${m.customsDays}d)</span></td>
             <td><strong>${m.totalEstDays}d</strong></td>
@@ -2019,6 +2218,8 @@
             <td>
               <div style="display:flex;gap:5px;">
                 <a href="#/rig/${r.id}" class="btn btn-sm btn-primary">Abrir</a>
+                ${r.isMasterGroup && isAdmin() ? `<button class="btn btn-sm" title="Editar tareas agrupadas" onclick="openGroupMasterModal('${r.id}')">📦</button>` : ""}
+                ${isChild && isAdmin() ? `<button class="btn btn-sm" title="Sacar del grupo" onclick="removeSubtaskFromMaster('${r.id}')">📤</button>` : ""}
                 <button class="btn btn-sm btn-gcal" title="Agregar a Google Calendar" onclick="addRigToGoogleCalendar('${r.id}')">📅</button>
                 ${isAdmin() ? `
                   <button class="btn btn-sm" title="Duplicar ficha" onclick="duplicateRig('${r.id}')">📋</button>
@@ -2028,7 +2229,14 @@
             </td>
           </tr>
         `;
-      }).join("");
+
+        if (r.isMasterGroup && isExpanded && children.length > 0) {
+          return mainTr + children.map(ch => renderSingleRow(ch, true)).join("");
+        }
+        return mainTr;
+      };
+
+      return topLevel.map(r => renderSingleRow(r, false)).join("");
     }
 
     function renderAssetList(el, mode) {
@@ -2124,9 +2332,14 @@
               </select>
             </div>
             ${isAdmin() ? `
-              <button class="btn btn-primary" onclick="openNewRigModal('${mode === "vehicles" ? "Vehículo" : (mode === "customs" ? "Custom" : "Personaje Principal")}')">
-                + Agregar ${mode === "vehicles" ? "Vehículo / Prop" : (mode === "customs" ? "Rig Custom" : "Personaje")}
-              </button>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-sm" style="border-color:var(--cyan);color:var(--cyan);" onclick="openGroupMasterModal('', '${mode === "vehicles" ? "Vehículo" : (mode === "customs" ? "Custom" : "Personaje Principal")}')">
+                  📦 Agrupar Tareas
+                </button>
+                <button class="btn btn-primary" onclick="openNewRigModal('${mode === "vehicles" ? "Vehículo" : (mode === "customs" ? "Custom" : "Personaje Principal")}')">
+                  + Agregar ${mode === "vehicles" ? "Vehículo / Prop" : (mode === "customs" ? "Rig Custom" : "Personaje")}
+                </button>
+              </div>
             ` : ""}
           </div>
           ${contentHTML}
@@ -2208,6 +2421,28 @@
             </div>
           </div>
         </div>
+
+        ${rig.isMasterGroup ? `
+          <div class="panel" style="border-left:4px solid var(--cyan);background:rgba(14,165,233,0.06);">
+            <div class="panel-header" style="margin-bottom:10px;">
+              <div class="panel-title">📦 Tareas Agrupadas dentro de "${rig.name}" (${getChildRigs(rig.id).length})</div>
+              ${isAdmin() ? `<button class="btn btn-sm btn-primary" onclick="openGroupMasterModal('${rig.id}')">+ Agregar / Quitar Subtareas</button>` : ""}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              ${getChildRigs(rig.id).map(ch => {
+                const cm = calcRigMetrics(ch);
+                return `
+                  <div class="subtask-chip">
+                    <a href="#/rig/${ch.id}" style="color:#fff;font-weight:700;text-decoration:none;">↳ ${ch.name}</a>
+                    <span class="badge ${statusClass(ch.status)}">${ch.status}</span>
+                    <span style="font-size:11px;color:var(--cyan);">${cm.totalEstDays}d (${cm.progress}%)</span>
+                    ${isAdmin() ? `<button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:10px;" onclick="removeSubtaskFromMaster('${ch.id}')" title="Sacar del grupo">✕</button>` : ""}
+                  </div>
+                `;
+              }).join("") || `<span style="color:var(--text-dim);font-size:12.5px;">No hay subtareas vinculadas aún.</span>`}
+            </div>
+          </div>
+        ` : ""}
 
         <div class="subtabs">
           <button class="subtab ${activeRigTab==='general'?'active':''}" onclick="activeRigTab='general';renderCurrentRoute()">1. Datos Generales</button>
@@ -3383,15 +3618,27 @@
       const isCompact = ganttRowHeight <= 46;
       const baseBarH = Math.max(20, Math.min(38, Math.round(ganttRowHeight * 0.46)));
 
-      // Agrupar filas estilo Tom's Planner (permite múltiples tareas superpuestas en la misma fila o en paralelo)
+      // Agrupar filas estilo Tom's Planner + jerarquía desplegable de Tareas Maestras
+      const filteredIds = new Set(filtered.map(r => r.id));
       const rowGroups = [];
       const visitedGroupIds = new Set();
+
       filtered.forEach(r => {
+        if (r.parentRigId && filteredIds.has(r.parentRigId) && !r.isMasterGroup) return;
+
         const gid = r.timelineRowGroupId || r.id;
         if (visitedGroupIds.has(gid)) return;
         visitedGroupIds.add(gid);
-        const members = filtered.filter(x => (x.timelineRowGroupId || x.id) === gid);
-        rowGroups.push({ gid, primary: members[0], members });
+        const members = filtered.filter(x => (x.timelineRowGroupId || x.id) === gid && (!x.parentRigId || !filteredIds.has(x.parentRigId) || x.isMasterGroup));
+        if (members.length === 0) return;
+        rowGroups.push({ gid, primary: members[0], members, isSubtask: false });
+
+        if (members[0].isMasterGroup && !collapsedMasterIds.has(members[0].id)) {
+          const children = filtered.filter(ch => ch.parentRigId === members[0].id);
+          children.forEach(ch => {
+            rowGroups.push({ gid: "sub-" + ch.id, primary: ch, members: [ch], isSubtask: true });
+          });
+        }
       });
 
       el.innerHTML = `
@@ -3442,9 +3689,15 @@
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               ${isAdmin() ? `
+                <button class="btn btn-sm" style="border-color:var(--cyan);color:var(--cyan);" onclick="openGroupMasterModal()">
+                  📦 Agrupar Tareas
+                </button>
                 <button class="btn btn-sm ${ganttPinMode ? 'btn-danger' : 'btn-primary'}"
                         onclick="ganttPinMode=!ganttPinMode;preserveGanttScrollAndRender()">
                   ${ganttPinMode ? '🎯 Hacé clic sobre la barra... (Cancelar)' : '🚩 Marcador'}
+                </button>
+                <button class="btn btn-sm" onclick="undoLastAction()" title="Retroceder (Ctrl + Z)">
+                  ↩️ Retroceder${undoStack.length > 0 ? ` (${undoStack.length})` : ''}
                 </button>
                 <button class="btn btn-save btn-sm" onclick="commitSave('Cronograma Gantt guardado')">💾 Guardar Timeline</button>
               ` : ""}
@@ -3532,21 +3785,31 @@
                   })
                   .filter(Boolean);
 
+                const isMaster = Boolean(r.isMasterGroup);
+                const masterChildren = isMaster ? getChildRigs(r.id) : [];
+                const isMasterExpanded = isMaster && !collapsedMasterIds.has(r.id);
+
                 return `
-                  <div class="gantt-row ${isCompact ? 'compact-row' : ''}"
+                  <div class="gantt-row ${isCompact ? 'compact-row' : ''} ${isMaster ? 'master-row' : ''} ${group.isSubtask ? 'subtask-row' : ''}"
                        style="--gantt-row-h:${rowEffectiveH}px;--gantt-bar-h:${baseBarH}px;"
                        ondragover="onGanttRowDragOver(event)"
                        ondragleave="onGanttRowDragLeave(event)"
                        ondrop="onGanttRowDrop(event, '${r.id}', '${originISO}', ${totalCols})">
                     <div class="gantt-info">
                       <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
-                        <div style="display:flex;align-items:center;min-width:0;gap:3px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;min-width:0;gap:4px;flex-wrap:wrap;">
                           ${isAdmin() ? `<span class="gantt-row-drag-handle" draggable="true" ondragstart="onGanttRowDragStart(event, '${r.id}')" title="Arrastrar para mover fila arriba/abajo">⋮⋮</span>` : ""}
+                          ${isMaster ? `<button type="button" class="master-toggle-btn" onclick="toggleMasterExpand('${r.id}')" title="Desplegar / contraer subtareas">${isMasterExpanded ? '▼' : '▶'} ${masterChildren.length}</button>` : ""}
+                          ${group.isSubtask ? `<span style="color:var(--cyan);font-weight:800;">↳</span>` : ""}
                           ${members.map((mbItem, idx) => `
-                            <a href="#/rig/${mbItem.id}" style="color:#fff;font-weight:700;text-decoration:none;font-size:${members.length>1?'12px':'13px'};">${mbItem.name}</a>${idx < members.length - 1 ? '<span style="color:var(--cyan);font-weight:800;">+</span>' : ''}
+                            <a href="#/rig/${mbItem.id}" style="color:#fff;font-weight:700;text-decoration:none;font-size:${members.length>1?'12px':'13px'};">${mbItem.isMasterGroup ? '📦 ' : ''}${mbItem.name}</a>${idx < members.length - 1 ? '<span style="color:var(--cyan);font-weight:800;">+</span>' : ''}
                           `).join("")}
                         </div>
-                        <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;">${Number(totalGroupDays.toFixed(1))}d</span>
+                        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                          ${isMaster && isAdmin() ? `<button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:10px;" onclick="openGroupMasterModal('${r.id}')" title="Editar tareas agrupadas">✏️</button>` : ""}
+                          ${group.isSubtask && isAdmin() ? `<button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:10px;" onclick="removeSubtaskFromMaster('${r.id}')" title="Sacar del grupo">📤</button>` : ""}
+                          <span style="font-size:11px;color:var(--text-muted);">${Number(totalGroupDays.toFixed(1))}d</span>
+                        </div>
                       </div>
                       ${members.length > 1 && isAdmin() ? `
                         <div class="gantt-row-controls" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;">
@@ -3587,8 +3850,8 @@
                       ${memberBars.map(({ item, m, leftPct, widthPct, lane }) => {
                         const bottomPx = 6 + lane * (baseBarH + 5);
                         return `
-                          <div class="gantt-bar ${m.isLate?'late':''} ${ganttPinMode?'pin-mode':''}"
-                               draggable="${isAdmin() && !ganttPinMode}"
+                          <div class="gantt-bar ${item.isMasterGroup ? 'master-bar' : ''} ${m.isLate?'late':''} ${ganttPinMode?'pin-mode':''}"
+                               draggable="${isAdmin() && !ganttPinMode && !item.isMasterGroup}"
                                ondragstart="onGanttDragStart(event, '${item.id}')"
                                ondragend="onGanttDragEnd(event, '${item.id}', ${totalCols})"
                                onclick="onBarClickWithPinCheck(event, '${item.id}', '${originISO}', ${totalCols})"
@@ -4243,8 +4506,129 @@
       const r = state.rigs.find(x => x.id === rigId);
       if (!r) return;
       if (confirm(`¿Eliminar definitivamente la ficha de "${r.name}"?`)) {
+        pushUndoSnapshot(`Eliminar ${r.name}`);
+        state.rigs.forEach(x => { if (x.parentRigId === rigId) delete x.parentRigId; });
         state.rigs = state.rigs.filter(x => x.id !== rigId);
         commitSave(`Ficha "${r.name}" eliminada`);
+      }
+    }
+
+    function toggleMasterExpand(masterId) {
+      if (collapsedMasterIds.has(masterId)) collapsedMasterIds.delete(masterId);
+      else collapsedMasterIds.add(masterId);
+      renderCurrentRoute();
+    }
+
+    function openGroupMasterModal(masterId = "", defaultCat = "Personaje Principal") {
+      if (!isAdmin()) return;
+      const modal = document.getElementById("group-master-modal");
+      document.getElementById("gm-folder").innerHTML = `<option value="">Sin carpeta</option>` + (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
+      document.getElementById("gm-assignee").innerHTML = `<option value="">Sin asignar</option>` + state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+
+      const existing = masterId ? state.rigs.find(r => r.id === masterId) : null;
+      document.getElementById("gm-edit-id").value = existing ? existing.id : "";
+      document.getElementById("gm-name").value = existing ? existing.name : "";
+      document.getElementById("gm-category").value = existing ? existing.category : defaultCat;
+      document.getElementById("gm-folder").value = existing ? (existing.folderId || "") : "";
+      document.getElementById("gm-assignee").value = existing ? (existing.assigneeId || "") : "";
+
+      const candidates = state.rigs.filter(r => !r.isMasterGroup && r.id !== masterId);
+      const listBox = document.getElementById("gm-children-list");
+      listBox.innerHTML = candidates.length === 0
+        ? `<div style="color:var(--text-dim);font-size:12px;">No hay tareas disponibles para agrupar.</div>`
+        : candidates.map(r => {
+            const checked = existing ? (r.parentRigId === existing.id) : false;
+            const otherParent = r.parentRigId && (!existing || r.parentRigId !== existing.id)
+              ? state.rigs.find(p => p.id === r.parentRigId)
+              : null;
+            return `
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 7px;border-radius:6px;background:var(--bg-card);cursor:pointer;color:var(--text-main);">
+                <span style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" class="gm-child-cb" value="${r.id}" ${checked ? "checked" : ""} />
+                  <strong>${r.name}</strong>
+                  <span style="font-size:11px;color:var(--text-muted);">(${r.category})</span>
+                </span>
+                ${otherParent ? `<span style="font-size:10.5px;color:var(--yellow);">En: ${otherParent.name}</span>` : `<span style="font-size:11px;color:var(--cyan);">${r.startDate}</span>`}
+              </label>
+            `;
+          }).join("");
+
+      modal.classList.add("open");
+    }
+
+    function closeGroupMasterModal() {
+      document.getElementById("group-master-modal").classList.remove("open");
+    }
+
+    function handleSaveMasterGroup(e) {
+      e.preventDefault();
+      if (!isAdmin()) return;
+      pushUndoSnapshot("Agrupar tareas");
+      const editId = document.getElementById("gm-edit-id").value;
+      const name = document.getElementById("gm-name").value.trim();
+      const category = document.getElementById("gm-category").value;
+      const folderId = document.getElementById("gm-folder").value;
+      const assigneeId = document.getElementById("gm-assignee").value;
+      const selectedIds = Array.from(document.querySelectorAll(".gm-child-cb:checked")).map(cb => cb.value);
+
+      if (selectedIds.length === 0) {
+        alert("Seleccioná al menos una tarea para incluir dentro de esta tarea grande.");
+        return;
+      }
+
+      let masterRig = editId ? state.rigs.find(r => r.id === editId) : null;
+      if (!masterRig) {
+        const newId = "rig-grp-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + String(Date.now()).slice(-4);
+        masterRig = {
+          id: newId,
+          name,
+          category,
+          folderId,
+          complexity: "Muy Alta",
+          baseEstDays: 1,
+          actualDays: 0,
+          assigneeId,
+          startDate: todayISO(0),
+          status: "en progreso",
+          isMasterGroup: true,
+          notes: "Tarea agrupadora que contiene múltiples subtareas desplegables.",
+          files: [],
+          customs: [],
+          stages: createStages(0, -1),
+          layoutReviews: [],
+          history: [{ date: new Date().toLocaleString(), action: `Tarea agrupada "${name}" creada con ${selectedIds.length} subtareas` }]
+        };
+        state.rigs.unshift(masterRig);
+      } else {
+        masterRig.name = name;
+        masterRig.category = category;
+        masterRig.folderId = folderId;
+        masterRig.assigneeId = assigneeId;
+        masterRig.isMasterGroup = true;
+      }
+
+      state.rigs.forEach(r => {
+        if (r.parentRigId === masterRig.id && !selectedIds.includes(r.id)) {
+          delete r.parentRigId;
+        }
+        if (selectedIds.includes(r.id)) {
+          r.parentRigId = masterRig.id;
+        }
+      });
+
+      calcRigMetrics(masterRig);
+      collapsedMasterIds.delete(masterRig.id);
+      closeGroupMasterModal();
+      commitSave(`Tarea agrupada "${name}" guardada (${selectedIds.length} tareas)`);
+    }
+
+    function removeSubtaskFromMaster(childId) {
+      if (!isAdmin()) return;
+      const child = state.rigs.find(r => r.id === childId);
+      if (child && child.parentRigId) {
+        pushUndoSnapshot("Desagrupar subtarea");
+        delete child.parentRigId;
+        commitSave(`"${child.name}" sacada del grupo`);
       }
     }
 
