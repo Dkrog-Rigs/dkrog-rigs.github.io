@@ -2449,6 +2449,57 @@
     // =========================================================================
     // 9. FICHA INDIVIDUAL DE RIG (#/rig/:id)
     // =========================================================================
+    function buildRigCommentsHTML(rig) {
+      const comments = rig.comments || [];
+      const canPost = isAdmin() || canCommentObservations() || canUploadContent();
+      const defaultAuthor = isAdmin() ? "Administrador" : (readOnlySession?.label || "Colaborador");
+
+      return `
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <div class="panel-title">💬 Hilo de Comentarios y Feedback (${comments.length})</div>
+          </div>
+          ${canPost ? `
+            <form onsubmit="addRigComment(event, '${rig.id}')" style="background:var(--bg-card);padding:14px;border-radius:9px;border:1px solid var(--border);margin-bottom:14px;">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Autor *</label>
+                  <input type="text" id="rc-author" value="${defaultAuthor}" required />
+                </div>
+                <div class="form-group">
+                  <label>Enlace de referencia / video (opcional)</label>
+                  <input type="url" id="rc-link" placeholder="https://drive.google.com/... o YouTube/Vimeo" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-top:10px;">
+                <label>Comentario *</label>
+                <textarea id="rc-text" required placeholder="Escribí una nota, revisión o detalle de animación..."></textarea>
+              </div>
+              <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                <button type="submit" class="btn btn-primary btn-sm">💬 Publicar Comentario</button>
+              </div>
+            </form>
+          ` : ""}
+          ${comments.length === 0
+            ? `<div style="color:var(--text-dim);font-size:12.5px;">No hay comentarios en esta ficha aún.</div>`
+            : comments.map((cm, idx) => `
+                <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                  <div>
+                    <div style="font-size:12.5px;">
+                      <strong style="color:var(--cyan);">${cm.author}</strong>
+                      <span style="color:var(--text-dim);font-size:11px;margin-left:8px;">${cm.date}</span>
+                    </div>
+                    <div style="margin-top:4px;font-size:13px;white-space:pre-wrap;">${cm.text}</div>
+                    ${cm.link ? `<div style="margin-top:4px;"><a href="${cm.link}" target="_blank" rel="noopener noreferrer" style="color:var(--primary);font-size:12px;">🔗 Ver enlace adjunto</a></div>` : ""}
+                  </div>
+                  ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteRigComment('${rig.id}', ${idx})">🗑️</button>` : ""}
+                </div>
+              `).join("")
+          }
+        </div>
+      `;
+    }
+
     function renderRigDetail(el, rigId) {
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) {
@@ -2511,7 +2562,7 @@
 
         <div class="subtabs">
           <button class="subtab ${activeRigTab==='general'?'active':''}" onclick="activeRigTab='general';renderCurrentRoute()">1. Datos Generales</button>
-          <button class="subtab ${activeRigTab==='files'?'active':''}" onclick="activeRigTab='files';renderCurrentRoute()">2. Archivos (.moho, .ai, .psd, .png) (${filesCount})</button>
+          <button class="subtab ${activeRigTab==='files'?'active':''}" onclick="activeRigTab='files';renderCurrentRoute()">2. Archivos (.moho, .ai, .psd, .png, .mp4) (${filesCount})</button>
           <button class="subtab ${activeRigTab==='customs'?'active':''}" onclick="activeRigTab='customs';renderCurrentRoute()">3. Customs & Smart Bones (${(rig.customs||[]).length})</button>
           <button class="subtab ${activeRigTab==='stages'?'active':''}" onclick="activeRigTab='stages';renderCurrentRoute()">4. Etapas (14)</button>
           <button class="subtab ${activeRigTab==='layout'?'active':''}" onclick="activeRigTab='layout';renderCurrentRoute()">5. Observaciones (${(rig.layoutReviews||[]).length})</button>
@@ -2586,7 +2637,7 @@
               ? `<div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn btn-save" onclick="saveRigNotesComment('${rig.id}')">💬 Guardar Observaciones</button></div>`
               : "")}
         </div>
-        ${comments_thread_html}
+        ${buildRigCommentsHTML(rig)}
       `;
     }
 
@@ -2633,7 +2684,7 @@
     }
 
     // =========================================================================
-    // 9B. ARCHIVOS (.MOHO, .AI, .PSD, .PNG) + LINKS DE GOOGLE DRIVE
+    // 9B. ARCHIVOS (.MOHO, .AI, .PSD, .PNG, .MP4) + LINKS DE GOOGLE DRIVE
     // =========================================================================
     let isUploadingFile = false;
 
@@ -2643,12 +2694,12 @@
         <div class="panel">
           <div class="panel-header">
             <div>
-              <div class="panel-title">📎 Contenido y Archivos del Rig (.moho, .ai, .psd, .png, Drive)</div>
+              <div class="panel-title">📎 Contenido y Archivos del Rig (.moho, .ai, .psd, .png, .mp4, Drive)</div>
               <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
                 ${isAdmin()
-                  ? "Subí archivos o vinculá directamente el enlace de tu carpeta/archivo en Google Drive. Marcá cuáles pueden descargar los lectores."
+                  ? "Subí archivos o videos MP4 (pruebas de animación/turnaround) o vinculá enlaces de Google Drive. Marcá cuáles pueden descargar los lectores."
                   : (canUploadContent()
-                      ? "📤💬 Modo Colaborador: Podés subir archivos, vincular enlaces de Drive, descargar y dejar comentarios abajo."
+                      ? "📤💬 Modo Colaborador: Podés subir archivos/videos MP4, vincular enlaces de Drive, descargar y dejar comentarios abajo."
                       : (canDownloadFiles()
                           ? "📥 Tenés permiso para descargar únicamente los archivos habilitados por el administrador."
                           : "🔒 Modo Lector: No tenés permiso para descargar archivos."))}
@@ -2664,21 +2715,21 @@
                    ondragover="event.preventDefault();this.classList.add('dragover')"
                    ondragleave="this.classList.remove('dragover')"
                    ondrop="handleRigFileDrop(event, '${rig.id}')">
-                <div style="font-size:24px;margin-bottom:5px;">${isUploadingFile ? "⏳" : "📤"}</div>
+                <div style="font-size:24px;margin-bottom:5px;">${isUploadingFile ? "⏳" : "🎬📤"}</div>
                 <div style="font-weight:700;font-size:13.5px;">
-                  ${isUploadingFile ? "Subiendo archivo..." : "Subir archivo (.moho, .ai, .psd, .png)"}
+                  ${isUploadingFile ? "Subiendo archivo..." : "Subir archivo o video (.moho, .ai, .psd, .png, .mp4)"}
                 </div>
                 <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-                  Hacé clic o arrastrá archivos aquí
+                  Hacé clic o arrastrá archivos o videos MP4 aquí (máx. 8 MB directo; para videos pesados usá enlace Drive)
                 </div>
                 <input type="file" id="rig-file-input" multiple style="display:none;"
-                       accept=".moho,.ai,.psd,.png,.jpg,.jpeg,.svg,.pdf,.zip,.rar,.mp4,*/*"
+                       accept=".moho,.ai,.psd,.png,.jpg,.jpeg,.svg,.pdf,.zip,.rar,.mp4,video/mp4,*/*"
                        onchange="handleRigFileSelect(event, '${rig.id}')" />
               </div>
 
               <form onsubmit="addDriveLinkAsset(event, '${rig.id}')" style="background:var(--bg-card);padding:14px;border-radius:10px;border:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
-                <div style="font-weight:700;font-size:13px;color:var(--cyan);">☁️ Vincular Archivo / Carpeta de Google Drive</div>
-                <input type="text" id="dl-asset-name" required placeholder="Nombre archivo (Ej: PlimPlim_Master_v04.moho)" style="padding:7px 10px;" />
+                <div style="font-weight:700;font-size:13px;color:var(--cyan);">☁️ Vincular Archivo / Video MP4 de Google Drive</div>
+                <input type="text" id="dl-asset-name" required placeholder="Nombre archivo (Ej: PlimPlim_Turnaround.mp4 o Master_v04.moho)" style="padding:7px 10px;" />
                 <input type="url" id="dl-asset-url" required placeholder="Pegar enlace de Google Drive (https://drive.google.com/...)" style="padding:7px 10px;" />
                 <button type="submit" class="btn btn-primary btn-sm">+ Vincular Enlace Drive</button>
               </form>
@@ -2688,7 +2739,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Formato</th><th>Nombre del Archivo</th><th>Tamaño / Origen</th><th>Subido</th><th>Descarga para Lectores</th><th>Acciones</th></tr>
+                <tr><th>Formato</th><th>Nombre / Vista Previa</th><th>Tamaño / Origen</th><th>Subido</th><th>Descarga para Lectores</th><th>Acciones</th></tr>
               </thead>
               <tbody>
                 ${files.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:20px;">No hay archivos cargados para este rig todavía.</td></tr>` :
@@ -2696,10 +2747,19 @@
                     const showDownloadBtn = isAdmin() || (canDownloadFiles() && f.allowReaderDownload);
                     const dlHref = f.downloadUrl || f.driveUrl || f.dataUrl || "#";
                     const isBase64 = dlHref.startsWith("data:");
+                    const isMp4 = (f.ext || "").toLowerCase() === "mp4" || (f.name || "").toLowerCase().endsWith(".mp4");
+                    const canPlayInline = isMp4 && dlHref !== "#" && (dlHref.startsWith("data:video/") || /\.mp4(\?|$)/i.test(dlHref));
                     return `
                       <tr>
-                        <td><span class="ext-pill">${(f.ext || "FILE").toUpperCase()}</span></td>
-                        <td><strong>${f.name}</strong></td>
+                        <td><span class="ext-pill" style="${isMp4 ? 'background:rgba(139,92,246,0.25);color:#ddd6fe;border-color:rgba(139,92,246,0.5);' : ''}">${isMp4 ? '🎬 MP4' : (f.ext || 'FILE').toUpperCase()}</span></td>
+                        <td>
+                          <strong>${f.name}</strong>
+                          ${canPlayInline ? `
+                            <div style="margin-top:8px;">
+                              <video src="${dlHref}" controls preload="metadata" style="max-width:280px;max-height:165px;border-radius:8px;border:1px solid var(--border-light);background:#000;"></video>
+                            </div>
+                          ` : ""}
+                        </td>
                         <td>${f.size ? formatBytes(f.size) : "☁️ Google Drive"}</td>
                         <td style="font-size:12px;color:var(--text-muted);">${f.uploadedAt}</td>
                         <td>
@@ -2715,9 +2775,9 @@
                         </td>
                         <td>
                           <div style="display:flex;gap:6px;">
-                            ${showDownloadBtn
+                            ${showDownloadBtn && dlHref !== "#"
                               ? `<a href="${dlHref}" ${isBase64 ? `download="${f.name}"` : `target="_blank" rel="noopener noreferrer"`} class="btn btn-sm btn-primary">⬇️ Descargar</a>`
-                              : `<span style="font-size:11.5px;color:var(--text-dim);">Sin permiso</span>`}
+                              : `<span style="font-size:11.5px;color:var(--text-dim);">${dlHref === "#" ? "Archivo grande (usar Drive)" : "Sin permiso"}</span>`}
                             ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteRigFile('${rig.id}', '${f.id}')">🗑️</button>` : ""}
                           </div>
                         </td>
@@ -2729,7 +2789,7 @@
             </table>
           </div>
         </div>
-        ${comments_thread_html}
+        ${buildRigCommentsHTML(rig)}
       `;
     }
 
@@ -2811,7 +2871,7 @@
               ext,
               size: file.size,
               uploadedAt: new Date().toLocaleString(),
-              dataUrl: file.size <= 3 * 1024 * 1024 ? dataUrl : "#",
+              dataUrl: file.size <= 8 * 1024 * 1024 ? dataUrl : "#",
               allowReaderDownload: false
             });
           }
