@@ -869,6 +869,46 @@
     </div>
   </div>
 
+  <!-- MODAL LINK DIRECTO AL RIG / VEHÍCULO / CUSTOM -->
+  <div class="modal-backdrop" id="rig-share-modal">
+    <div class="modal-box" style="max-width:560px;">
+      <div class="panel-header">
+        <div class="panel-title" id="rsm-title">🔗 Compartir Enlace Directo al Asset</div>
+        <button class="btn btn-sm" onclick="closeRigShareModal()">✕</button>
+      </div>
+      <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">
+        Este enlace abre directamente la ficha de <strong id="rsm-rig-name" style="color:#fff;"></strong> y permite que el destinatario <strong>suba archivos/contenido y deje comentarios</strong> (o solo vea/descargue según el permiso elegido).
+      </div>
+      <input type="hidden" id="rsm-rig-id" />
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Permiso de este enlace directo *</label>
+        <select id="rsm-perm" onchange="refreshRigShareModalURL()">
+          <option value="colaborador">📤💬 Colaborador (Subir archivos/contenido + Dejar comentarios + Descargar)</option>
+          <option value="comentarista">💬 Comentarista (Ver ficha + Dejar comentarios)</option>
+          <option value="descarga">📥 Descarga (Ver ficha + Descargar archivos habilitados)</option>
+          <option value="lector">🔒 Solo Lectura (Ver ficha únicamente)</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label>Enlace Directo Listo para Compartir</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="rsm-url-output" readonly style="flex:1;font-family:monospace;font-size:12px;color:var(--cyan);" onclick="this.select()" />
+          <button type="button" class="btn btn-primary btn-sm" onclick="copyRigShareModalURL()">📋 Copiar Link</button>
+        </div>
+      </div>
+      <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px 12px;font-size:12px;color:#a7f3d0;margin-bottom:14px;">
+        💡 <strong>Tip:</strong> El enlace lleva directamente a <code>#/rig/&lt;id&gt;</code> con el código de acceso integrado (<code>?v=U-...</code> para Colaborador con subida y comentarios). No requiere que el invitado busque el rig manualmente.
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <a id="rsm-open-preview" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-sm">👁️ Abrir vista previa</a>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-save btn-sm" onclick="registerRigShareLinkAndCopy()">💾 Registrar y Copiar</button>
+          <button type="button" class="btn btn-sm" onclick="closeRigShareModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div class="toast" id="toast">✓ Cambios guardados</div>
 
@@ -1041,7 +1081,7 @@
     }
 
     function generateShortCode(permission) {
-      const prefix = permission === "descarga" ? "D" : (permission === "comentarista" ? "C" : "L");
+      const prefix = permission === "colaborador" ? "U" : (permission === "descarga" ? "D" : (permission === "comentarista" ? "C" : "L"));
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let code = "";
       for (let i = 0; i < 4; i++) {
@@ -1334,7 +1374,7 @@
     let collapsedMasterIds = new Set();
 
     function pushUndoSnapshot(label = "Acción") {
-      if (!isAdmin() && !canCommentObservations()) return;
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) return;
       try {
         const snap = JSON.stringify(state);
         if (undoStack.length > 0 && undoStack[undoStack.length - 1].snap === snap) return;
@@ -1344,7 +1384,7 @@
     }
 
     function undoLastAction() {
-      if (!isAdmin() && !canCommentObservations()) {
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) {
         showToast("🔒 Modo Lector: No podés deshacer cambios");
         return;
       }
@@ -1407,18 +1447,19 @@
       const userEmail = (currentAuthUser && currentAuthUser.email) ? currentAuthUser.email.toLowerCase().trim() : "";
       const adminEmails = (state.adminEmails || []).map(e => String(e).toLowerCase().trim()).filter(Boolean);
 
-      // Si hay un código ?v=L-XXXX, ?v=D-XXXX o ?v=C-XXXX explícito en la URL, siempre respeta ese modo invitado
+      // Si hay un código ?v=L-XXXX, ?v=D-XXXX, ?v=C-XXXX o ?v=U-XXXX explícito en la URL, siempre respeta ese modo invitado
       if (code) {
+        const isCollaborator = code.startsWith("U-");
         const isDownload = code.startsWith("D-");
         const isCommenter = code.startsWith("C-");
         const foundLink = (state.shareLinks || []).find(l => l.id.toUpperCase() === code);
         if (foundLink && !foundLink.active) {
-          readOnlySession = { active: true, revoked: true, permission: foundLink.permission, label: foundLink.label, token: code };
+          readOnlySession = { active: true, revoked: true, permission: foundLink.permission, label: foundLink.label, token: code, targetRigId: foundLink.rigId || "" };
           return;
         }
-        const perm = foundLink ? foundLink.permission : (isDownload ? "descarga" : (isCommenter ? "comentarista" : "lector"));
-        const label = foundLink ? foundLink.label : (perm === "descarga" ? "Invitado (Descarga)" : (perm === "comentarista" ? "Invitado (Comentarista)" : "Invitado (Solo Lector)"));
-        readOnlySession = { active: true, revoked: false, permission: perm, label, token: code };
+        const perm = foundLink ? foundLink.permission : (isCollaborator ? "colaborador" : (isDownload ? "descarga" : (isCommenter ? "comentarista" : "lector")));
+        const label = foundLink ? foundLink.label : (perm === "colaborador" ? "Colaborador (Subir y Comentar)" : (perm === "descarga" ? "Invitado (Descarga)" : (perm === "comentarista" ? "Invitado (Comentarista)" : "Invitado (Solo Lector)")));
+        readOnlySession = { active: true, revoked: false, permission: perm, label, token: code, targetRigId: foundLink?.rigId || "" };
         return;
       }
 
@@ -1444,16 +1485,21 @@
 
     function canDownloadFiles() {
       if (isAdmin()) return true;
-      return readOnlySession.permission === "descarga";
+      return readOnlySession.permission === "descarga" || readOnlySession.permission === "colaborador";
     }
 
     function canCommentObservations() {
       if (isAdmin()) return true;
-      return readOnlySession.permission === "comentarista";
+      return readOnlySession.permission === "comentarista" || readOnlySession.permission === "colaborador";
+    }
+
+    function canUploadContent() {
+      if (isAdmin()) return true;
+      return readOnlySession.permission === "colaborador";
     }
 
     function markDirty(skipSnapshot = false) {
-      if (!isAdmin() && !canCommentObservations()) return;
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) return;
       if (!skipSnapshot) pushUndoSnapshot();
       isDirty = true;
       updateTopbarUI();
@@ -1545,7 +1591,7 @@
     }
 
     async function commitSave(toastMsg = "Guardado correctamente") {
-      if (!isAdmin() && !canCommentObservations()) {
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) {
         alert("🔒 Modo Lector activo: No tenés permisos para modificar ni guardar cambios.");
         return;
       }
@@ -1737,24 +1783,27 @@
       const syncInfo = document.getElementById("sidebar-sync-info");
 
       if (!isAdmin()) {
+        const isCollab = readOnlySession.permission === "colaborador";
         const isDl = readOnlySession.permission === "descarga";
         const isComm = readOnlySession.permission === "comentarista";
         bannerSlot.innerHTML = `
-          <div class="readonly-banner ${isDl || isComm ? 'download-mode' : ''}">
+          <div class="readonly-banner ${isCollab || isDl || isComm ? 'download-mode' : ''}">
             <span>
-              ${isComm
-                ? `💬 MODO COMENTARISTA (${readOnlySession.label}) — Podés navegar las tareas y dejar comentarios en las casillas de Observaciones.`
-                : (isDl
-                  ? `📥 MODO LECTOR + DESCARGA (${readOnlySession.label}) — Podés navegar todo el workspace y descargar los archivos habilitados.`
-                  : `🔒 MODO LECTOR (${readOnlySession.label}) — Solo visualización, sin permisos de edición ni descarga.`)}
+              ${isCollab
+                ? `📤💬 MODO COLABORADOR (${readOnlySession.label}) — Podés subir contenido/archivos, descargar y dejar comentarios en la ficha.`
+                : (isComm
+                  ? `💬 MODO COMENTARISTA (${readOnlySession.label}) — Podés navegar las tareas y dejar comentarios en las casillas de Observaciones.`
+                  : (isDl
+                    ? `📥 MODO LECTOR + DESCARGA (${readOnlySession.label}) — Podés navegar todo el workspace y descargar los archivos habilitados.`
+                    : `🔒 MODO LECTOR (${readOnlySession.label}) — Solo visualización, sin permisos de edición ni descarga.`))}
             </span>
             <span style="font-size:11.5px;opacity:0.9;">Código: ${readOnlySession.token}</span>
           </div>
         `;
-        if (modeTitle) modeTitle.textContent = isComm ? "Invitado (Comentarista)" : (isDl ? "Invitado (Descarga)" : "Invitado (Solo Lector)");
+        if (modeTitle) modeTitle.textContent = isCollab ? "Invitado (Colaborador)" : (isComm ? "Invitado (Comentarista)" : (isDl ? "Invitado (Descarga)" : "Invitado (Solo Lector)"));
         actionsSlot.innerHTML = `
-          <span class="badge ${isComm ? 'st-aprobado' : (isDl ? 'st-progreso' : 'st-revision')}">
-            ${isComm ? "💬 Comentarista" : (isDl ? "📥 Lectura + Descarga" : "🔒 Solo Lectura")}
+          <span class="badge ${isCollab || isComm ? 'st-aprobado' : (isDl ? 'st-progreso' : 'st-revision')}">
+            ${isCollab ? "📤💬 Subir y Comentar" : (isComm ? "💬 Comentarista" : (isDl ? "📥 Lectura + Descarga" : "🔒 Solo Lectura"))}
           </span>
           ${currentAuthUser ? `<button class="btn btn-sm btn-danger" onclick="handleFirebaseLogout()">🚪 Salir</button>` : ""}
         `;
@@ -2172,7 +2221,10 @@
                       </div>
                       <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.06);">
                         <span style="color:${m.isLate?'var(--red)':'var(--text-dim)'};">📅 ${m.endDate}</span>
-                        <strong>${m.totalEstDays}d</strong>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                          <button type="button" class="btn btn-sm" style="padding:1px 6px;font-size:10.5px;border-color:var(--cyan);color:var(--cyan);" title="Copiar link directo a este asset (para subir contenido y comentar)" onclick="event.stopPropagation();openRigShareModal('${r.id}')">🔗 Compartir</button>
+                          <strong>${m.totalEstDays}d</strong>
+                        </div>
                       </div>
                     </div>
                   `;
@@ -2229,6 +2281,7 @@
             <td>
               <div style="display:flex;gap:5px;">
                 <a href="#/rig/${r.id}" class="btn btn-sm btn-primary">Abrir</a>
+                <button class="btn btn-sm" style="border-color:var(--cyan);color:var(--cyan);" title="Link directo a este rig/vehículo/custom" onclick="openRigShareModal('${r.id}')">🔗</button>
                 ${r.isMasterGroup && isAdmin() ? `<button class="btn btn-sm" title="Editar tareas agrupadas" onclick="openGroupMasterModal('${r.id}')">📦</button>` : ""}
                 ${isChild && isAdmin() ? `<button class="btn btn-sm" title="Sacar del grupo" onclick="removeSubtaskFromMaster('${r.id}')">📤</button>` : ""}
                 <button class="btn btn-sm btn-gcal" title="Agregar a Google Calendar" onclick="addRigToGoogleCalendar('${r.id}')">📅</button>
@@ -2423,6 +2476,7 @@
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-sm btn-primary" onclick="openRigShareModal('${rig.id}')">🔗 Compartir Link Directo</button>
               <button class="btn btn-sm btn-gcal" onclick="addRigToGoogleCalendar('${rig.id}')">📅 Agregar a Google Calendar</button>
               <button class="btn btn-sm" onclick="exportSingleRigReport('${rig.id}')">🖨️ Reporte PDF</button>
               ${isAdmin() ? `
@@ -2532,11 +2586,12 @@
               ? `<div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn btn-save" onclick="saveRigNotesComment('${rig.id}')">💬 Guardar Observaciones</button></div>`
               : "")}
         </div>
+        ${comments_thread_html}
       `;
     }
 
     function saveRigNotesComment(rigId) {
-      if (!isAdmin() && !canCommentObservations()) return;
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) return;
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) return;
       rig.notes = document.getElementById("ed-notes").value;
@@ -2588,19 +2643,21 @@
         <div class="panel">
           <div class="panel-header">
             <div>
-              <div class="panel-title">📎 Archivos del Rig (.moho, .ai, .psd, .png) y Enlaces Google Drive</div>
+              <div class="panel-title">📎 Contenido y Archivos del Rig (.moho, .ai, .psd, .png, Drive)</div>
               <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
                 ${isAdmin()
                   ? "Subí archivos o vinculá directamente el enlace de tu carpeta/archivo en Google Drive. Marcá cuáles pueden descargar los lectores."
-                  : (canDownloadFiles()
-                      ? "📥 Tenés permiso para descargar únicamente los archivos habilitados por el administrador."
-                      : "🔒 Modo Lector: No tenés permiso para descargar archivos.")}
+                  : (canUploadContent()
+                      ? "📤💬 Modo Colaborador: Podés subir archivos, vincular enlaces de Drive, descargar y dejar comentarios abajo."
+                      : (canDownloadFiles()
+                          ? "📥 Tenés permiso para descargar únicamente los archivos habilitados por el administrador."
+                          : "🔒 Modo Lector: No tenés permiso para descargar archivos."))}
               </div>
             </div>
-            ${isAdmin() ? `<button class="btn btn-save btn-sm" onclick="commitSave('Archivos y permisos guardados')">💾 Guardar Archivos</button>` : ""}
+            ${(isAdmin() || canUploadContent()) ? `<button class="btn btn-save btn-sm" onclick="commitSave('Archivos y contenido guardados')">💾 Guardar Contenido</button>` : ""}
           </div>
 
-          ${isAdmin() ? `
+          ${(isAdmin() || canUploadContent()) ? `
             <div class="grid-2" style="margin-bottom:16px;">
               <div class="dropzone"
                    onclick="if(!isUploadingFile) document.getElementById('rig-file-input').click()"
@@ -2672,12 +2729,13 @@
             </table>
           </div>
         </div>
+        ${comments_thread_html}
       `;
     }
 
     function addDriveLinkAsset(e, rigId) {
       e.preventDefault();
-      if (!isAdmin()) return;
+      if (!isAdmin() && !canUploadContent()) return;
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) return;
       if (!rig.files) rig.files = [];
@@ -2701,11 +2759,11 @@
     function handleRigFileDrop(e, rigId) {
       e.preventDefault();
       e.currentTarget.classList.remove("dragover");
-      if (isAdmin() && !isUploadingFile && e.dataTransfer?.files) processUploadedFiles(rigId, e.dataTransfer.files);
+      if ((isAdmin() || canUploadContent()) && !isUploadingFile && e.dataTransfer?.files) processUploadedFiles(rigId, e.dataTransfer.files);
     }
 
     function handleRigFileSelect(e, rigId) {
-      if (isAdmin() && !isUploadingFile && e.target.files) processUploadedFiles(rigId, e.target.files);
+      if ((isAdmin() || canUploadContent()) && !isUploadingFile && e.target.files) processUploadedFiles(rigId, e.target.files);
     }
 
     function fileToBase64(file) {
@@ -3024,7 +3082,7 @@
 
     function addLayoutReview(e, rigId) {
       e.preventDefault();
-      if (!isAdmin() && !canCommentObservations()) return;
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) return;
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) return;
       const major = document.getElementById("lr-major").checked;
@@ -4159,10 +4217,114 @@
     // =========================================================================
     // 11. CENTRO DE ENLACES COMPARTIDOS (?v=L-XXXX / ?v=D-XXXX)
     // =========================================================================
+
+    function buildDirectRigShareURL(rigId, permission = "colaborador", explicitCode = "") {
+      const base = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
+      const sep = base.includes("?") ? "&" : "?";
+      const code = explicitCode || generateShortCode(permission);
+      return {
+        code,
+        url: `${base}${sep}v=${code}#/rig/${rigId}`
+      };
+    }
+
+    function openRigShareModal(rigId) {
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (!rig) return;
+      document.getElementById("rsm-rig-id").value = rig.id;
+      document.getElementById("rsm-rig-name").textContent = `${rig.name} (${rig.category})`;
+      document.getElementById("rsm-perm").value = "colaborador";
+      refreshRigShareModalURL();
+      document.getElementById("rig-share-modal").classList.add("open");
+    }
+
+    function closeRigShareModal() {
+      document.getElementById("rig-share-modal").classList.remove("open");
+    }
+
+    function refreshRigShareModalURL() {
+      const rigId = document.getElementById("rsm-rig-id").value;
+      const perm = document.getElementById("rsm-perm").value;
+      const existing = (state.shareLinks || []).find(l => l.active && l.rigId === rigId && l.permission === perm);
+      const { url } = buildDirectRigShareURL(rigId, perm, existing ? existing.id : "");
+      document.getElementById("rsm-url-output").value = url;
+      const prev = document.getElementById("rsm-open-preview");
+      if (prev) prev.href = url;
+    }
+
+    async function copyRigShareModalURL() {
+      const url = document.getElementById("rsm-url-output").value;
+      await copyRawText(url);
+    }
+
+    async function registerRigShareLinkAndCopy() {
+      const rigId = document.getElementById("rsm-rig-id").value;
+      const perm = document.getElementById("rsm-perm").value;
+      const currentUrl = document.getElementById("rsm-url-output").value;
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (!rig) return;
+
+      const matchCode = currentUrl.match(/[?&]v=([A-Z0-9-]+)/i);
+      const code = matchCode ? matchCode[1].toUpperCase() : generateShortCode(perm);
+
+      if (isAdmin()) {
+        if (!state.shareLinks) state.shareLinks = [];
+        const exists = state.shareLinks.find(l => l.id.toUpperCase() === code);
+        if (!exists) {
+          state.shareLinks.unshift({
+            id: code,
+            label: `Directo: ${rig.name} (${perm})`,
+            permission: perm,
+            rigId: rig.id,
+            createdAt: todayISO(0),
+            active: true
+          });
+          await commitSave(`Enlace directo registrado (?v=${code})`);
+        }
+      }
+      await copyRawText(currentUrl);
+    }
+
+    function addRigComment(e, rigId) {
+      e.preventDefault();
+      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) return;
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (!rig) return;
+      if (!rig.comments) rig.comments = [];
+      const author = document.getElementById("rc-author").value.trim() || "Colaborador";
+      const link = document.getElementById("rc-link").value.trim();
+      const text = document.getElementById("rc-text").value.trim();
+      if (!text) return;
+
+      rig.comments.unshift({
+        id: "cm-" + Date.now(),
+        author,
+        link,
+        text,
+        date: new Date().toLocaleString()
+      });
+      if (!rig.history) rig.history = [];
+      rig.history.unshift({
+        date: new Date().toLocaleString(),
+        action: `Comentario publicado por ${author}`
+      });
+      commitSave(`Comentario agregado en ${rig.name}`);
+    }
+
+    function deleteRigComment(rigId, idx) {
+      if (!isAdmin()) return;
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (rig && rig.comments && confirm("¿Eliminar este comentario?")) {
+        rig.comments.splice(idx, 1);
+        commitSave("Comentario eliminado");
+      }
+    }
+
     function buildShareURL(linkObj) {
       const base = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
       const sep = base.includes("?") ? "&" : "?";
-      return `${base}${sep}v=${linkObj.id}`;
+      const hashTarget = linkObj.rigId ? `#/rig/${linkObj.rigId}` : "";
+      return `${base}${sep}v=${linkObj.id}${hashTarget}`;
     }
 
     function renderShareCenter(el) {
@@ -4201,6 +4363,7 @@
               <div class="form-group">
                 <label>Permiso del Enlace *</label>
                 <select id="shr-perm">
+                  <option value="colaborador">📤💬 Colaborador (Subir archivos/contenido + Dejar comentarios + Descargar)</option>
                   <option value="lector">🔒 Solo ver (Lector — No edita ni descarga archivos)</option>
                   <option value="descarga">📥 Ver y descargar archivos habilitados (Descarga — No edita nada)</option>
                   <option value="comentarista">💬 Comentarista (Deja comentarios en Observaciones de tareas)</option>
@@ -4237,6 +4400,7 @@
                       </td>
                       <td>
                         <select onchange="changeSharePermission('${lk.id}', this.value)" style="font-weight:700;">
+                          <option value="colaborador" ${lk.permission==="colaborador"?"selected":""}>📤💬 Colaborador (Subir y Comentar)</option>
                           <option value="lector" ${lk.permission==="lector"?"selected":""}>🔒 Solo ver (Lector)</option>
                           <option value="descarga" ${lk.permission==="descarga"?"selected":""}>📥 Descarga de archivos (Descarga)</option>
                           <option value="comentarista" ${lk.permission==="comentarista"?"selected":""}>💬 Comentarista (Observaciones)</option>
@@ -4287,7 +4451,7 @@
       if (lk) {
         lk.permission = perm;
         const suffix = lk.id.includes("-") ? lk.id.split("-")[1] : lk.id;
-        const prefix = perm === "descarga" ? "D-" : (perm === "comentarista" ? "C-" : "L-");
+        const prefix = perm === "colaborador" ? "U-" : (perm === "descarga" ? "D-" : (perm === "comentarista" ? "C-" : "L-"));
         lk.id = prefix + suffix;
         commitSave(`Permiso actualizado a ${perm} (?v=${lk.id})`);
       }
