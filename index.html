@@ -729,6 +729,23 @@
     <main class="content" id="app-content"></main>
   </div>
 
+  <!-- MODAL CONFIRMAR SALIDA (NO BLOQUEA EL NAVEGADOR) -->
+  <div class="modal-backdrop" id="logout-confirm-modal">
+    <div class="modal-box" style="max-width:410px;">
+      <div class="panel-header" style="margin-bottom:10px;">
+        <div class="panel-title">🚪 Cerrar Sesión</div>
+        <button class="btn btn-sm" onclick="closeLogoutConfirmModal()">✕</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:13.5px;margin-bottom:18px;">
+        ¿Cerrar sesión y bloquear el acceso en este navegador?
+      </p>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="btn" onclick="closeLogoutConfirmModal()">Cancelar</button>
+        <button type="button" class="btn btn-danger" onclick="executeFirebaseLogout()">🚪 Sí, Salir</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL NUEVO RIG -->
   <div class="modal-backdrop" id="new-rig-modal">
     <div class="modal-box">
@@ -987,8 +1004,20 @@
       }
     }
 
-    async function handleFirebaseLogout() {
-      if (fbAuth && confirm("¿Cerrar sesión y bloquear el acceso en este navegador?")) {
+    function handleFirebaseLogout() {
+      if (!fbAuth) return;
+      const modal = document.getElementById("logout-confirm-modal");
+      if (modal) modal.classList.add("open");
+    }
+
+    function closeLogoutConfirmModal() {
+      const modal = document.getElementById("logout-confirm-modal");
+      if (modal) modal.classList.remove("open");
+    }
+
+    async function executeFirebaseLogout() {
+      closeLogoutConfirmModal();
+      if (fbAuth) {
         await fbAuth.signOut();
         window.location.reload();
       }
