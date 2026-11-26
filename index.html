@@ -388,21 +388,39 @@
     .subtab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
     /* Gantt */
-    .gantt-container { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-input); width: 100%; }
-    .gantt-grid { width: 100%; }
+    .gantt-container {
+      overflow: auto;
+      max-height: calc(100vh - 235px);
+      min-height: 420px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-input);
+      width: 100%;
+      position: relative;
+    }
+    .gantt-grid { width: 100%; position: relative; }
     .gantt-header, .gantt-row {
       display: grid;
       grid-template-columns: 260px 1fr;
       border-bottom: 1px solid var(--border);
     }
-    .gantt-header { background: #0d1526; font-weight: 700; font-size: 11.5px; color: var(--text-muted); position: sticky; top: 0; z-index: 10; }
+    .gantt-header {
+      background: #0d1526;
+      font-weight: 700;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      position: sticky;
+      top: 0;
+      z-index: 18;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+    }
     .gantt-info {
       padding: 9px 12px; border-right: 1px solid var(--border);
       display: flex; flex-direction: column; justify-content: center; gap: 3px;
       background: #0e1628; position: sticky; left: 0; z-index: 6;
     }
-    .gantt-header .gantt-info { z-index: 12; background: #0b1221; }
-    .gantt-header-stack { display: flex; flex-direction: column; width: 100%; }
+    .gantt-header .gantt-info { z-index: 22; background: #0b1221; }
+    .gantt-header-stack { display: flex; flex-direction: column; width: 100%; background: #0d1526; }
     .gantt-months-row { display: flex; border-bottom: 1px solid var(--border-light); background: #131e36; }
     .gantt-month-block {
       border-right: 1px solid var(--border-light);
