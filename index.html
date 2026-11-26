@@ -227,6 +227,27 @@
     .kpi-card {
       background: var(--bg-panel); border: 1px solid var(--border);
       border-radius: 11px; padding: 15px 16px;
+      cursor: pointer; transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+      position: relative;
+    }
+    .kpi-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 6px 18px rgba(24, 134, 240, 0.18);
+    }
+    .kpi-card.active-kpi {
+      border-color: var(--cyan);
+      background: linear-gradient(180deg, rgba(6, 182, 212, 0.12), var(--bg-panel));
+      box-shadow: 0 0 0 1px var(--cyan);
+    }
+    .kpi-drawer {
+      background: var(--bg-panel);
+      border: 1px solid var(--cyan);
+      border-left: 4px solid var(--cyan);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 20px;
+      animation: slideUp 0.18s ease;
     }
     .kpi-label { font-size: 11.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
     .kpi-val { font-size: 25px; font-weight: 800; margin-top: 5px; }
@@ -2001,8 +2022,186 @@
     }
 
     // =========================================================================
-    // 7. DASHBOARD GENERAL
+    // 7. DASHBOARD GENERAL (CON MENÚ DESPLEGABLE INTERACTIVO POR KPI)
     // =========================================================================
+    let activeDashboardKpi = null;
+    let activeDashboardSubFilter = "ALL";
+
+    function toggleDashboardKpi(kpiKey) {
+      if (activeDashboardKpi === kpiKey) {
+        activeDashboardKpi = null;
+      } else {
+        activeDashboardKpi = kpiKey;
+        activeDashboardSubFilter = "ALL";
+      }
+      renderCurrentRoute();
+    }
+
+    function setDashboardSubFilter(sub) {
+      activeDashboardSubFilter = sub;
+      renderCurrentRoute();
+    }
+
+    function renderDashboardKpiDrawer() {
+      if (!activeDashboardKpi) return "";
+
+      const configs = {
+        total: {
+          title: "📋 Desglose Total de Rigs",
+          subtitle: "Listado completo de personajes, vehículos/props y rigs custom registrados.",
+          tabs: [
+            { id: "ALL", label: `Todos (${state.rigs.length})` },
+            { id: "CHARS", label: `Personajes (${state.rigs.filter(r => r.category !== "Vehículo" && r.category !== "Custom").length})` },
+            { id: "VEH", label: `Vehículos / Props (${state.rigs.filter(r => r.category === "Vehículo").length})` },
+            { id: "CUSTOM", label: `Custom (${state.rigs.filter(r => r.category === "Custom").length})` }
+          ],
+          getItems: () => {
+            if (activeDashboardSubFilter === "CHARS") return state.rigs.filter(r => r.category !== "Vehículo" && r.category !== "Custom");
+            if (activeDashboardSubFilter === "VEH") return state.rigs.filter(r => r.category === "Vehículo");
+            if (activeDashboardSubFilter === "CUSTOM") return state.rigs.filter(r => r.category === "Custom");
+            return [...state.rigs];
+          }
+        },
+        progress: {
+          title: "📈 Desglose de Avance General por Rig",
+          subtitle: "Progreso calculado según las 14 etapas técnicas aprobadas en cada ficha.",
+          tabs: [
+            { id: "ALL", label: `Todos (${state.rigs.length})` },
+            { id: "IN_PROG", label: `Con avance > 0% (${state.rigs.filter(r => calcRigMetrics(r).progress > 0).length})` },
+            { id: "ZERO", label: `Sin iniciar 0% (${state.rigs.filter(r => calcRigMetrics(r).progress === 0).length})` }
+          ],
+          getItems: () => {
+            let list = [...state.rigs];
+            if (activeDashboardSubFilter === "IN_PROG") list = list.filter(r => calcRigMetrics(r).progress > 0);
+            else if (activeDashboardSubFilter === "ZERO") list = list.filter(r => calcRigMetrics(r).progress === 0);
+            return list.sort((a, b) => calcRigMetrics(b).progress - calcRigMetrics(a).progress);
+          }
+        },
+        approved: {
+          title: "✅ Rigs Terminados / Aprobados",
+          subtitle: "Assets finalizados y listos para pasar a animación.",
+          tabs: [],
+          getItems: () => state.rigs.filter(r => r.status === "aprobado")
+        },
+        production: {
+          title: "🔵 Rigs En Producción y Revisión Layout",
+          subtitle: "Assets actualmente en desarrollo activo o en ronda de revisión con Layout.",
+          tabs: [
+            { id: "ALL", label: `Todos activos (${state.rigs.filter(r => r.status === "en progreso" || r.status === "en revisión").length})` },
+            { id: "PROG", label: `En Progreso (${state.rigs.filter(r => r.status === "en progreso").length})` },
+            { id: "REV", label: `En Revisión Layout (${state.rigs.filter(r => r.status === "en revisión").length})` }
+          ],
+          getItems: () => {
+            if (activeDashboardSubFilter === "PROG") return state.rigs.filter(r => r.status === "en progreso");
+            if (activeDashboardSubFilter === "REV") return state.rigs.filter(r => r.status === "en revisión");
+            return state.rigs.filter(r => r.status === "en progreso" || r.status === "en revisión");
+          }
+        },
+        pending: {
+          title: "⏳ Rigs Pendientes y Bloqueados",
+          subtitle: "Tareas en cola por comenzar o frenadas por observaciones/diseño.",
+          tabs: [
+            { id: "ALL", label: `Todos (${state.rigs.filter(r => r.status === "pendiente" || r.status === "bloqueado").length})` },
+            { id: "PEND", label: `Pendientes (${state.rigs.filter(r => r.status === "pendiente").length})` },
+            { id: "BLOCK", label: `Bloqueados (${state.rigs.filter(r => r.status === "bloqueado").length})` }
+          ],
+          getItems: () => {
+            if (activeDashboardSubFilter === "PEND") return state.rigs.filter(r => r.status === "pendiente");
+            if (activeDashboardSubFilter === "BLOCK") return state.rigs.filter(r => r.status === "bloqueado");
+            return state.rigs.filter(r => r.status === "pendiente" || r.status === "bloqueado");
+          }
+        },
+        days: {
+          title: "⏱️ Desglose de Jornadas Estimadas vs Reales",
+          subtitle: "Comparativa de días base + customs + layout frente a las jornadas reales invertidas.",
+          tabs: [
+            { id: "ALL", label: `Todos (${state.rigs.length})` },
+            { id: "INVESTED", label: `Con días invertidos (${state.rigs.filter(r => Number(r.actualDays || 0) > 0).length})` }
+          ],
+          getItems: () => {
+            let list = [...state.rigs];
+            if (activeDashboardSubFilter === "INVESTED") list = list.filter(r => Number(r.actualDays || 0) > 0);
+            return list.sort((a, b) => calcRigMetrics(b).totalEstDays - calcRigMetrics(a).totalEstDays);
+          }
+        }
+      };
+
+      const cfg = configs[activeDashboardKpi];
+      if (!cfg) return "";
+      const items = cfg.getItems();
+
+      return `
+        <div class="kpi-drawer">
+          <div class="panel-header" style="margin-bottom:10px;">
+            <div>
+              <div class="panel-title" style="color:var(--cyan);font-size:16px;">${cfg.title} (${items.length})</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${cfg.subtitle}</div>
+            </div>
+            <button class="btn btn-sm" onclick="toggleDashboardKpi('${activeDashboardKpi}')">▲ Cerrar menú</button>
+          </div>
+
+          ${cfg.tabs.length > 0 ? `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+              ${cfg.tabs.map(t => `
+                <button class="btn btn-sm ${activeDashboardSubFilter === t.id ? 'btn-primary' : ''}"
+                        onclick="setDashboardSubFilter('${t.id}')">${t.label}</button>
+              `).join("")}
+            </div>
+          ` : ""}
+
+          ${items.length === 0 ? `
+            <div style="padding:14px;color:var(--text-dim);font-size:13px;background:var(--bg-input);border-radius:8px;">
+              No hay rigs registrados en esta categoría o estado actualmente.
+            </div>
+          ` : `
+            <div class="table-wrap" style="max-height:360px;overflow-y:auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Asset / Rig</th>
+                    <th>Categoría / Carpeta</th>
+                    <th>Complejidad</th>
+                    <th>Responsable</th>
+                    <th>Estado</th>
+                    <th>Avance</th>
+                    <th>Jornadas (Est. / Real)</th>
+                    <th>Entrega Est.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${items.map(r => {
+                    const m = calcRigMetrics(r);
+                    return `
+                      <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td>
+                          <div style="font-size:12px;">${r.category}</div>
+                          <div style="font-size:11px;color:var(--cyan);">📁 ${getRigFolderName(r.folderId)}</div>
+                        </td>
+                        <td><span class="badge ${complexityClass(r.complexity)}">${r.complexity}</span></td>
+                        <td>${getAssigneeName(r.assigneeId)}</td>
+                        <td><span class="badge ${statusClass(r.status)}">${r.status}</span></td>
+                        <td style="min-width:110px;">
+                          <div style="display:flex;align-items:center;gap:6px;">
+                            <div class="prog-track"><div class="prog-fill" style="width:${m.progress}%"></div></div>
+                            <span style="font-size:11.5px;font-weight:700;">${m.progress}%</span>
+                          </div>
+                        </td>
+                        <td><strong>${m.totalEstDays}d</strong> <span style="color:var(--text-dim);font-size:11.5px;">/ ${Number(r.actualDays || 0)}d real</span></td>
+                        <td style="color:${m.isLate ? 'var(--red)' : 'var(--text-main)'};font-weight:600;">${m.endDate}</td>
+                        <td><a href="#/rig/${r.id}" class="btn btn-sm btn-primary">Abrir Ficha</a></td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
     function renderDashboard(el) {
       const total = state.rigs.length;
       const approved = state.rigs.filter(r => r.status === "aprobado").length;
@@ -2055,37 +2254,57 @@
         ` : ""}
 
         <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-label">Total de Rigs</div>
+          <div class="kpi-card ${activeDashboardKpi === 'total' ? 'active-kpi' : ''}" onclick="toggleDashboardKpi('total')" title="Clic para desplegar listado">
+            <div class="kpi-label" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>Total de Rigs</span>
+              <span style="font-size:11px;color:var(--cyan);">${activeDashboardKpi === 'total' ? '▲' : '▼'}</span>
+            </div>
             <div class="kpi-val">${total}</div>
             <div class="kpi-sub">${state.rigs.filter(r=>r.category!=="Vehículo" && r.category!=="Custom").length} personajes · ${state.rigs.filter(r=>r.category==="Vehículo").length} vehículos/props · ${state.rigs.filter(r=>r.category==="Custom").length} custom</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Avance General</div>
+          <div class="kpi-card ${activeDashboardKpi === 'progress' ? 'active-kpi' : ''}" onclick="toggleDashboardKpi('progress')" title="Clic para desplegar listado">
+            <div class="kpi-label" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>Avance General</span>
+              <span style="font-size:11px;color:var(--cyan);">${activeDashboardKpi === 'progress' ? '▲' : '▼'}</span>
+            </div>
             <div class="kpi-val" style="color:var(--primary)">${avgProgress}%</div>
             <div class="prog-track" style="margin-top:8px;"><div class="prog-fill" style="width:${avgProgress}%"></div></div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Terminados / Aprobados</div>
+          <div class="kpi-card ${activeDashboardKpi === 'approved' ? 'active-kpi' : ''}" onclick="toggleDashboardKpi('approved')" title="Clic para desplegar listado">
+            <div class="kpi-label" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>Terminados / Aprobados</span>
+              <span style="font-size:11px;color:var(--cyan);">${activeDashboardKpi === 'approved' ? '▲' : '▼'}</span>
+            </div>
             <div class="kpi-val" style="color:var(--green)">${approved}</div>
             <div class="kpi-sub">Listos para animación</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">En Producción</div>
+          <div class="kpi-card ${activeDashboardKpi === 'production' ? 'active-kpi' : ''}" onclick="toggleDashboardKpi('production')" title="Clic para desplegar listado">
+            <div class="kpi-label" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>En Producción</span>
+              <span style="font-size:11px;color:var(--cyan);">${activeDashboardKpi === 'production' ? '▲' : '▼'}</span>
+            </div>
             <div class="kpi-val" style="color:#60a5fa">${inProg}</div>
             <div class="kpi-sub">${inRev} en revisión Layout</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Pendientes / Bloqueados</div>
+          <div class="kpi-card ${activeDashboardKpi === 'pending' ? 'active-kpi' : ''}" onclick="toggleDashboardKpi('pending')" title="Clic para desplegar listado">
+            <div class="kpi-label" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>Pendientes / Bloqueados</span>
+              <span style="font-size:11px;color:var(--cyan);">${activeDashboardKpi === 'pending' ? '▲' : '▼'}</span>
+            </div>
             <div class="kpi-val" style="color:${blocked > 0 ? 'var(--red)' : 'var(--text-muted)'}">${pending} / <span style="color:var(--red)">${blocked}</span></div>
             <div class="kpi-sub">${blocked} bloqueado(s)</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Jornadas Est. vs Reales</div>
+          <div class="kpi-card ${activeDashboardKpi === 'days' ? 'active-kpi' : ''}" onclick="toggleDashboardKpi('days')" title="Clic para desplegar listado">
+            <div class="kpi-label" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>Jornadas Est. vs Reales</span>
+              <span style="font-size:11px;color:var(--cyan);">${activeDashboardKpi === 'days' ? '▲' : '▼'}</span>
+            </div>
             <div class="kpi-val">${totalEst.toFixed(1)}d</div>
             <div class="kpi-sub">${totalActual.toFixed(1)} días invertidos</div>
           </div>
         </div>
+
+        ${renderDashboardKpiDrawer()}
 
         <div class="grid-2">
           <div class="panel">
