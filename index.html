@@ -591,7 +591,7 @@
     }
     .gantt-task-pin {
       position: absolute;
-      bottom: 36px; /* Justo encima de la barra (8px bottom + 28px height) */
+      bottom: 36px;
       transform: translateX(-50%);
       display: inline-flex;
       align-items: center;
@@ -2934,11 +2934,7 @@
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) return;
       const newStatus = document.getElementById("ed-status").value;
-      const layoutApproved = (rig.layoutReviews || []).some(lr => lr.status === "aprobado");
-      if (newStatus === "aprobado" && !layoutApproved && (rig.layoutReviews || []).length > 0) {
-        alert("⚠️ Punto de control obligatorio: La revisión con el Director de Layout aún no está aprobada.");
-        return;
-      }
+      // Validación de Revisión con Director de Layout removida para permitir aprobación directa
       const prevAssigneeId = rig.assigneeId || "";
       const nextAssigneeId = document.getElementById("ed-assignee").value;
       rig.name = document.getElementById("ed-name").value.trim() || rig.name;
@@ -3340,11 +3336,7 @@
       if (!isAdmin()) return;
       const rig = state.rigs.find(r => r.id === rigId);
       if (!rig) return;
-      if (idx === 12 && val === "aprobada" && !(rig.layoutReviews || []).some(lr => lr.status === "aprobado")) {
-        alert("⚠️ Punto de control obligatorio: Debe registrar una Revisión con Director de Layout aprobada primero.");
-        renderCurrentRoute();
-        return;
-      }
+      // Validación de Revisión con Director de Layout en etapa 13 (Aprobación final) removida
       rig.stages[idx][field] = val;
       if (rig.stages.every(s => s.status === "aprobada")) rig.status = "aprobado";
       else if (rig.stages.some(s => s.status === "bloqueada")) rig.status = "bloqueado";
@@ -3457,7 +3449,6 @@
     // 10. CUSTOMS GLOBAL, TIMELINE, REVISIONES, EQUIPO, RECORDATORIOS
     // =========================================================================
     function renderCustomsGlobal(el) {
-      // Renderiza exactamente la misma interfaz de Tablero Kanban / Carpetas / Lista + Creación de Rigs con nivel de dificultad
       renderAssetList(el, "customs");
 
       const allCustoms = [];
@@ -3538,7 +3529,6 @@
       e.currentTarget.classList.remove("drag-over-row");
       if (!isAdmin()) return;
 
-      // Caso 1: Reordenar fila arrastrando el tirador ⋮⋮
       if (draggedGanttRowId) {
         const srcId = draggedGanttRowId;
         draggedGanttRowId = null;
@@ -3555,7 +3545,6 @@
         return;
       }
 
-      // Caso 2: Modo Tom's Planner — Arrastrar una barra de tarea encima de otra fila para moverla/superponerla en esa fila y fecha
       if (draggedGanttBarRigId) {
         const barRigId = draggedGanttBarRigId;
         draggedGanttBarRigId = null;
@@ -3563,7 +3552,6 @@
         const targetRig = state.rigs.find(r => r.id === targetRigId);
         if (!rig || !targetRig) return;
 
-        // Calcular desplazamiento horizontal en días
         const cell = e.currentTarget.querySelector(".gantt-timeline-cell");
         const cellWidth = (cell ? cell.getBoundingClientRect().width : 800) || 800;
         const deltaDays = Math.round((e.clientX - dragStartX) / (cellWidth / totalCols));
@@ -3574,7 +3562,6 @@
           rig.startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         }
 
-        // Si se soltó sobre otra fila distinta, vincular/agrupar en la misma fila visual (Tom's Planner multi-tarea por fila)
         if (barRigId !== targetRigId) {
           rig.timelineRowGroupId = targetRig.timelineRowGroupId || targetRig.id;
           if (!targetRig.timelineRowGroupId) targetRig.timelineRowGroupId = targetRig.id;
@@ -3829,7 +3816,6 @@
       openMarkerModal("", clickedISO, rigId);
     }
 
-    // Redimensionar duración directamente hasta la columna exacta donde se suelta el puntero del mouse
     function startGanttBarResize(e, rigId, edge, totalCols) {
       if (!isAdmin()) return;
       e.preventDefault();
@@ -3894,7 +3880,6 @@
           const safeEndISO = newEndISO < origStartDate ? origStartDate : newEndISO;
           const exactWorkdays = countWorkdaysInclusive(origStartDate, safeEndISO);
 
-          // Ajustar proporcionalmente customs y layout si el nuevo total es menor a ellos, para que la barra corte exactamente donde se soltó el mouse
           const curM = calcRigMetrics(rig);
           const curExtra = Number((curM.customsDays + curM.layoutDays).toFixed(1));
           if (exactWorkdays <= curExtra) {
@@ -4026,7 +4011,6 @@
       const isCompact = ganttRowHeight <= 46;
       const baseBarH = Math.max(20, Math.min(38, Math.round(ganttRowHeight * 0.46)));
 
-      // Agrupar filas estilo Tom's Planner + jerarquía desplegable de Tareas Maestras
       const filteredIds = new Set(filtered.map(r => r.id));
       const rowGroups = [];
       const visitedGroupIds = new Set();
@@ -4080,7 +4064,6 @@
                 ${availableYears.map(yr => `<option value="${yr}">Año ${yr}</option>`).join("")}
               </select>
 
-              <!-- Control de Altura de Filas (Achicar / Agrandar) -->
               <div style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;padding:3px 7px;" title="Achicar o agrandar la altura de las filas">
                 <span style="font-size:11px;color:var(--text-muted);font-weight:700;">↕️ Filas:</span>
                 <button type="button" class="btn btn-sm" style="padding:2px 7px;" onclick="changeGanttRowHeight(-12)" title="Achicar filas">−</button>
@@ -4092,7 +4075,6 @@
                 <button type="button" class="btn btn-sm" style="padding:2px 7px;" onclick="changeGanttRowHeight(12)" title="Agrandar filas">+</button>
               </div>
 
-              <!-- Modo Tom's Planner: Mostrar superposición en paralelo -->
               <button type="button"
                       class="btn btn-sm ${ganttOverlapMode ? 'btn-primary' : ''}"
                       onclick="ganttOverlapMode=!ganttOverlapMode;preserveGanttScrollAndRender()"
@@ -4157,7 +4139,6 @@
                 const members = group.members;
                 const totalGroupDays = members.reduce((acc, item) => acc + calcRigMetrics(item).totalEstDays, 0);
 
-                // Asignar carriles (lanes) verticales cuando varias tareas están en la misma fila y se superponen en fechas (Tom's Planner style)
                 const memberBars = members.map((item, mIdx) => {
                   const m = calcRigMetrics(item);
                   const sParts = item.startDate.split("-").map(Number);
@@ -4171,7 +4152,6 @@
                   return { item, m, offsetIdx, endIdx: offsetIdx + spanCols - 1, leftPct, widthPct, lane: mIdx };
                 });
 
-                // Calcular carriles sin colisión visual pero superpuestos en la misma fila
                 const lanesEnd = [];
                 memberBars.forEach(mb => {
                   let placedLane = lanesEnd.findIndex(endCol => mb.offsetIdx > endCol);
@@ -4342,7 +4322,6 @@
     }
     function onGanttDragEnd(e, rigId, totalCols) {
       if (!isAdmin() || justResizedBar) return;
-      // Si ya fue procesado por onGanttRowDrop, no duplicar
       if (!draggedGanttBarRigId) return;
       draggedGanttBarRigId = null;
       const cell = e.target.closest(".gantt-timeline-cell");
@@ -4363,41 +4342,44 @@
     function adjustRigDays(rigId, delta) {
       const r = state.rigs.find(x => x.id === rigId);
       if (!r) return;
-      if (delta < 0 && Number(r.baseEstDays) <= 1) {
-        const curM = calcRigMetrics(r);
-        const curExtra = Number((curM.customsDays + curM.layoutDays).toFixed(1));
-        if (curExtra > 0) {
-          const targetExtra = Math.max(0, curExtra + delta);
-          const scale = targetExtra / curExtra;
-          (r.customs || []).forEach(c => { c.estDays = Math.max(0, Number(((Number(c.estDays) || 0) * scale).toFixed(2))); });
-          (r.layoutReviews || []).forEach(lr => {
-            lr.estDays = Math.max(0, Number(((Number(lr.estDays) || 0) * scale).toFixed(2)));
-            if (lr.majorDesignChange) lr.extraDays = Math.max(0, Number(((Number(lr.extraDays) || 0) * scale).toFixed(2)));
-          });
-        }
-        r.baseEstDays = 0.5;
+      const curM = calcRigMetrics(r);
+      const curExtra = Number((curM.customsDays + curM.layoutDays).toFixed(1));
+      const newTotal = Math.max(0.5, Number((curM.totalEstDays + delta).toFixed(1)));
+      if (newTotal <= curExtra) {
+        const minBase = 0.5;
+        const availableExtra = Math.max(0, newTotal - minBase);
+        const scale = curExtra > 0 ? (availableExtra / curExtra) : 0;
+        (r.customs || []).forEach(c => { c.estDays = Math.max(0, Number(((Number(c.estDays) || 0) * scale).toFixed(2))); });
+        (r.layoutReviews || []).forEach(lr => {
+          lr.estDays = Math.max(0, Number(((Number(lr.estDays) || 0) * scale).toFixed(2)));
+          if (lr.majorDesignChange) lr.extraDays = Math.max(0, Number(((Number(lr.extraDays) || 0) * scale).toFixed(2)));
+        });
+        r.baseEstDays = minBase;
       } else {
-        r.baseEstDays = Math.max(0.5, Number(r.baseEstDays) + delta);
+        r.baseEstDays = Math.max(0.5, Number((newTotal - curExtra).toFixed(1)));
       }
       markDirty();
       preserveGanttScrollAndRender();
     }
 
     function renderReviewsGlobal(el) {
-      const reviews = [];
-      state.rigs.forEach(r => { (r.layoutReviews || []).forEach(lr => reviews.push({ rig: r, lr })); });
+      const allReviews = [];
+      state.rigs.forEach(r => { (r.layoutReviews || []).forEach(lr => allReviews.push({ rig: r, lr })); });
       el.innerHTML = `
         <div class="panel">
-          <div class="panel-header"><div class="panel-title">👁️ Historial Consolidado de Observaciones</div></div>
+          <div class="panel-header"><div class="panel-title">👁️ Observaciones y Revisiones (${allReviews.length})</div></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Rig</th><th>Ronda</th><th>Fecha</th><th>Observaciones</th><th>Correcciones</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Asset</th><th>Ronda</th><th>Fecha</th><th>Responsable</th><th>Estado</th><th>Observaciones</th><th></th></tr></thead>
               <tbody>
-                ${reviews.map(({rig, lr}) => `
+                ${allReviews.map(({rig, lr}) => `
                   <tr>
-                    <td><strong>${rig.name}</strong></td><td>#${lr.round}</td><td>${lr.date}</td>
-                    <td>${lr.observations || "—"}</td><td style="color:#fcd34d;">${lr.corrections || "—"}</td>
+                    <td><strong>${rig.name}</strong></td>
+                    <td>#${lr.round}</td>
+                    <td>${lr.date}</td>
+                    <td>${lr.reviewer}</td>
                     <td><span class="badge ${statusClass(lr.status)}">${lr.status}</span></td>
+                    <td>${lr.observations || "—"}</td>
                     <td><a href="#/rig/${rig.id}" class="btn btn-sm btn-primary">Abrir</a></td>
                   </tr>
                 `).join("")}
@@ -4409,86 +4391,67 @@
     }
 
     function renderTeam(el) {
-      const foldersToRender = [...(state.teamFolders || []), { id: "", name: "Equipo General (Sin carpeta)", color: "#64748b", isVirtual: true }];
+      const foldersToShow = [...(state.teamFolders || []), { id: "", name: "Sin carpeta de célula", color: "#64748b", isVirtual: true }];
       el.innerHTML = `
         ${isAdmin() ? `
           <div class="grid-2">
             <div class="panel">
-              <div class="panel-title" style="margin-bottom:10px;">📁 Crear Carpeta / Célula de Equipo</div>
+              <div class="panel-title" style="margin-bottom:12px;">📁 Crear Carpeta de Célula / Equipo</div>
               <form onsubmit="createTeamFolder(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
-                <input type="text" id="new-tf-name" placeholder="Ej: Equipo Personajes Episodio 2..." required style="flex:1;" />
+                <input type="text" id="new-tf-name" placeholder="Ej: Célula Facial / Célula Vehículos" required style="flex:1;min-width:180px;" />
                 <input type="color" id="new-tf-color" value="#10b981" style="width:40px;height:36px;padding:2px;" />
-                <button type="submit" class="btn btn-primary">+ Crear Carpeta Equipo</button>
+                <button type="submit" class="btn btn-primary">+ Crear Carpeta</button>
               </form>
             </div>
             <div class="panel">
-              <div class="panel-title" style="margin-bottom:10px;">👤 Agregar Nuevo Miembro al Equipo</div>
+              <div class="panel-title" style="margin-bottom:12px;">➕ Añadir Miembro al Equipo</div>
               <form onsubmit="addTeamMember(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
-                <input type="text" id="tm-new-name" placeholder="Nombre..." required />
-                <input type="email" id="tm-new-email" placeholder="Gmail (para alertas)..." />
-                <input type="text" id="tm-new-role" placeholder="Rol..." required />
-                <select id="tm-new-folder">
-                  <option value="">Equipo General</option>
-                  ${(state.teamFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("")}
+                <input type="text" id="tm-name" placeholder="Nombre y Apellido" required style="flex:1;min-width:140px;" />
+                <input type="email" id="tm-email" placeholder="Correo Gmail (opcional)" style="flex:1;min-width:170px;" />
+                <input type="text" id="tm-role" placeholder="Rol (Ej: Senior Moho Rigger)" required style="flex:1;min-width:150px;" />
+                <select id="tm-folder">
+                  <option value="">Sin carpeta</option>
+                  ${(state.teamFolders || []).map(f => `<option value="${f.id}">${f.name}</option>`).join("")}
                 </select>
-                <input type="number" id="tm-new-cap" value="20" min="5" max="20000" style="width:85px;" />
-                <button type="submit" class="btn btn-primary">+ Agregar</button>
+                <button type="submit" class="btn btn-save">+ Añadir</button>
               </form>
             </div>
           </div>
         ` : ""}
-        ${foldersToRender.map(folder => {
+
+        ${foldersToShow.map(folder => {
           const members = state.team.filter(m => (m.folderId || "") === folder.id);
           if (folder.isVirtual && members.length === 0) return "";
           return `
             <div class="folder-block" style="border-left:4px solid ${folder.color || '#1886F0'};">
               <div class="folder-header">
                 <div style="display:flex;align-items:center;gap:10px;">
-                  <span style="font-size:18px;">📁</span>
-                  <strong style="font-size:15.5px;">${folder.name}</strong>
+                  <span style="font-size:18px;">👥</span>
+                  <strong>${folder.name}</strong>
                   <span class="nav-badge">${members.length} integrantes</span>
                 </div>
-                ${isAdmin() && !folder.isVirtual ? `
-                  <div style="display:flex;gap:6px;">
-                    <button class="btn btn-sm" onclick="renameTeamFolder('${folder.id}')">✏️ Renombrar</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteTeamFolder('${folder.id}')">🗑️ Eliminar Carpeta</button>
-                  </div>
-                ` : ""}
+                ${isAdmin() && !folder.isVirtual ? `<button class="btn btn-sm btn-danger" onclick="deleteTeamFolder('${folder.id}')">🗑️ Eliminar Carpeta</button>` : ""}
               </div>
               <div class="folder-body">
-                <div class="grid-2">
-                  ${members.map(member => {
-                    const allAssigned = state.rigs.filter(r => r.assigneeId === member.id);
-                    const active = allAssigned.filter(r => r.status !== "aprobado");
-                    const done = allAssigned.filter(r => r.status === "aprobado");
-                    const pendingDays = active.reduce((a, r) => a + calcRigMetrics(r).totalEstDays, 0);
+                <div class="grid-3">
+                  ${members.map(m => {
+                    const assigned = state.rigs.filter(r => r.assigneeId === m.id);
+                    const activeDays = assigned.filter(r => r.status !== "aprobado").reduce((a, r) => a + calcRigMetrics(r).totalEstDays, 0);
                     return `
-                      <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:15px;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-                          <div><div style="font-size:16px;font-weight:800;">${member.name}</div><div style="font-size:12px;color:var(--text-muted);">${member.role}</div></div>
-                          <div style="display:flex;gap:6px;align-items:center;">
-                            <span class="badge st-aprobado">Activo</span>
-                            ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteTeamMember('${member.id}')">🗑️ Eliminar</button>` : ""}
+                      <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:14px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                          <div>
+                            <div style="font-weight:700;font-size:15px;">${m.name}</div>
+                            <div style="font-size:12px;color:var(--cyan);">${m.role}</div>
+                            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">✉️ ${m.email || "Sin correo registrado"}</div>
                           </div>
+                          ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="removeTeamMember('${m.id}')">✕</button>` : ""}
                         </div>
-                        ${isAdmin() ? `
-                          <div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap;">
-                            <span style="color:var(--text-muted);">Carpeta:</span>
-                            <select onchange="moveMemberToFolder('${member.id}', this.value)" style="padding:3px 7px;font-size:12px;">
-                              <option value="">Equipo General</option>
-                              ${(state.teamFolders || []).map(tf => `<option value="${tf.id}" ${member.folderId===tf.id?"selected":""}>📁 ${tf.name}</option>`).join("")}
-                            </select>
-                            <span style="color:var(--text-muted);margin-left:4px;">📧 Gmail:</span>
-                            <input type="email" value="${member.email || ''}" placeholder="correo@gmail.com" onchange="updateMemberEmail('${member.id}', this.value)" style="padding:3px 8px;font-size:12px;flex:1;min-width:165px;" />
-                          </div>
-                        ` : (member.email ? `<div style="margin-top:6px;font-size:11.5px;color:var(--cyan);">📧 ${member.email}</div>` : "")}
-                        <div style="display:flex;gap:16px;margin:11px 0;font-size:12.5px;">
-                          <span>Asignados: <strong>${allAssigned.length}</strong></span>
-                          <span>Pendientes: <strong>${active.length}</strong> (${pendingDays.toFixed(1)}d)</span>
-                          <span>Terminados: <strong style="color:var(--green)">${done.length}</strong></span>
+                        <div style="margin-top:10px;font-size:12.5px;">
+                          Activos: <strong>${assigned.filter(r=>r.status!=="aprobado").length}</strong> · Carga activa: <strong>${activeDays.toFixed(1)}d</strong>
                         </div>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                          ${active.map(r => `<a href="#/rig/${r.id}" class="badge ${complexityClass(r.complexity)}" style="text-decoration:none;">${r.name} (${calcRigMetrics(r).totalEstDays}d)</a>`).join("") || `<span style="font-size:12px;color:var(--text-dim);">Sin rigs activos</span>`}
+                        <div style="margin-top:10px;font-size:12px;">
+                          ${assigned.map(r => `<div>• <a href="#/rig/${r.id}" style="color:var(--text-main);">${r.name}</a> <span style="color:var(--text-dim)">(${r.status})</span></div>`).join("") || `<span style="color:var(--text-dim)">Sin rigs asignados</span>`}
                         </div>
                       </div>
                     `;
@@ -4501,52 +4464,91 @@
       `;
     }
 
-    function createTeamFolder(e) { e.preventDefault(); if (!isAdmin()) return; state.teamFolders.push({ id: "tf-" + Date.now(), name: document.getElementById("new-tf-name").value.trim(), color: document.getElementById("new-tf-color").value }); commitSave("Carpeta de equipo creada"); }
-    function renameTeamFolder(id) { if (!isAdmin()) return; const f = state.teamFolders.find(x => x.id === id); const n = prompt("Nuevo nombre:", f?.name); if (f && n?.trim()) { f.name = n.trim(); commitSave("Carpeta renombrada"); } }
-    function deleteTeamFolder(id) { if (!isAdmin()) return; const f = state.teamFolders.find(x => x.id === id); if (f && confirm(`¿Eliminar carpeta "${f.name}"?`)) { state.teamFolders = state.teamFolders.filter(x => x.id !== id); state.team.forEach(m => { if (m.folderId === id) m.folderId = ""; }); commitSave("Carpeta eliminada"); } }
-    function moveMemberToFolder(id, fid) { if (!isAdmin()) return; const m = state.team.find(x => x.id === id); if (m) { m.folderId = fid; commitSave("Miembro movido"); } }
-    function updateMemberEmail(id, val) {
+    function createTeamFolder(e) {
+      e.preventDefault();
       if (!isAdmin()) return;
-      const m = state.team.find(x => x.id === id);
-      if (m) { m.email = val.trim(); commitSave(`Correo de ${m.name} actualizado`); }
+      const name = document.getElementById("new-tf-name").value.trim();
+      const color = document.getElementById("new-tf-color").value;
+      if (!name) return;
+      state.teamFolders.push({ id: "tf-" + Date.now(), name, color });
+      commitSave(`Carpeta de equipo "${name}" creada`);
     }
-    function addTeamMember(e) { e.preventDefault(); if (!isAdmin()) return; state.team.push({ id: "tm-" + Date.now(), name: document.getElementById("tm-new-name").value.trim(), email: (document.getElementById("tm-new-email")?.value || "").trim(), role: document.getElementById("tm-new-role").value.trim(), folderId: document.getElementById("tm-new-folder").value, capacityDays: Number(document.getElementById("tm-new-cap").value) || 20 }); commitSave("Miembro añadido"); }
-    function deleteTeamMember(id) { if (!isAdmin()) return; const m = state.team.find(x => x.id === id); if (m && confirm(`¿Eliminar a "${m.name}" del equipo?`)) { state.team = state.team.filter(x => x.id !== id); state.rigs.forEach(r => { if (r.assigneeId === id) r.assigneeId = ""; }); commitSave(`"${m.name}" eliminado del equipo`); } }
+
+    function deleteTeamFolder(folderId) {
+      if (!isAdmin()) return;
+      if (confirm("¿Eliminar esta carpeta de equipo?")) {
+        state.teamFolders = state.teamFolders.filter(x => x.id !== folderId);
+        state.team.forEach(m => { if (m.folderId === folderId) m.folderId = ""; });
+        commitSave("Carpeta de equipo eliminada");
+      }
+    }
+
+    function addTeamMember(e) {
+      e.preventDefault();
+      if (!isAdmin()) return;
+      const name = document.getElementById("tm-name").value.trim();
+      const email = (document.getElementById("tm-email")?.value || "").trim();
+      const role = document.getElementById("tm-role").value.trim();
+      const folderId = document.getElementById("tm-folder").value;
+      state.team.push({ id: "tm-" + Date.now(), name, email, role, folderId, capacityDays: 20000 });
+      commitSave(`${name} añadido al equipo`);
+    }
+
+    function removeTeamMember(id) {
+      if (!isAdmin()) return;
+      if (confirm("¿Quitar a este integrante del equipo?")) {
+        state.team = state.team.filter(m => m.id !== id);
+        state.rigs.forEach(r => { if (r.assigneeId === id) r.assigneeId = ""; });
+        commitSave("Integrante eliminado");
+      }
+    }
 
     function renderReminders(el) {
-      const reminders = [...(state.reminders || [])].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+      const rems = state.reminders || [];
       el.innerHTML = `
         ${isAdmin() ? `
           <div class="panel">
-            <div class="panel-header"><div class="panel-title">🔔 Crear Recordatorio y Google Calendar</div></div>
-            <form onsubmit="addReminder(event)">
-              <div class="form-grid">
-                <div class="form-group"><label>Título *</label><input type="text" id="rem-title" required placeholder="Ej: Revisión con Director de Layout" /></div>
-                <div class="form-group"><label>Rig Asociado</label><select id="rem-rig"><option value="">General</option>${state.rigs.map(r => `<option value="${r.id}">${r.name}</option>`).join("")}</select></div>
-                <div class="form-group"><label>Fecha *</label><input type="date" id="rem-date" value="${todayISO(1)}" required /></div>
-                <div class="form-group"><label>Hora *</label><input type="time" id="rem-time" value="10:30" required /></div>
+            <div class="panel-title" style="margin-bottom:12px;">🔔 Crear Nuevo Recordatorio</div>
+            <form onsubmit="createReminder(event)" class="form-grid">
+              <div class="form-group"><label>Título *</label><input type="text" id="rem-title" required placeholder="Ej: Revisar rig de Plim Plim con Layout" /></div>
+              <div class="form-group">
+                <label>Rig Asociado</label>
+                <select id="rem-rig">
+                  <option value="">General / Workspace</option>
+                  ${state.rigs.map(r => `<option value="${r.id}">${r.name}</option>`).join("")}
+                </select>
               </div>
-              <div class="form-group" style="margin-top:10px;"><label>Notas</label><input type="text" id="rem-notes" placeholder="Detalles..." /></div>
-              <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="submit" class="btn btn-save">💾 Guardar Recordatorio</button></div>
+              <div class="form-group"><label>Fecha *</label><input type="date" id="rem-date" value="${todayISO(1)}" required /></div>
+              <div class="form-group"><label>Hora *</label><input type="time" id="rem-time" value="10:30" required /></div>
+              <div class="form-group"><label>Notas</label><input type="text" id="rem-notes" placeholder="Detalles..." /></div>
+              <div class="form-group" style="justify-content:flex-end;"><button type="submit" class="btn btn-save">+ Guardar Recordatorio</button></div>
             </form>
           </div>
         ` : ""}
+
         <div class="panel">
-          <div class="panel-header"><div class="panel-title">📅 Lista de Recordatorios (${reminders.length})</div></div>
+          <div class="panel-header"><div class="panel-title">📅 Recordatorios Programados (${rems.length})</div></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Fecha y Hora</th><th>Recordatorio</th><th>Rig</th><th>Estado</th><th>Google Calendar</th><th></th></tr></thead>
+              <thead><tr><th>Fecha y Hora</th><th>Recordatorio</th><th>Rig</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>
-                ${reminders.map(rem => {
-                  const rigObj = state.rigs.find(r => r.id === rem.rigId);
+                ${rems.map(rem => {
+                  const rig = state.rigs.find(r => r.id === rem.rigId);
                   return `
-                    <tr style="${rem.completed ? 'opacity:0.55;' : ''}">
-                      <td><strong>${rem.date}</strong> · <span style="color:var(--cyan);">${rem.time}</span></td>
-                      <td><strong>${rem.title}</strong></td>
-                      <td>${rigObj ? `<a href="#/rig/${rigObj.id}" style="color:var(--primary);font-weight:700;">${rigObj.name}</a>` : "General"}</td>
-                      <td>${isAdmin() ? `<button class="btn btn-sm ${rem.completed ? 'btn-save' : ''}" onclick="toggleReminderDone('${rem.id}')">${rem.completed ? "✅ Completado" : "⏳ Pendiente"}</button>` : (rem.completed ? "✅ Completado" : "⏳ Pendiente")}</td>
-                      <td><button class="btn btn-sm btn-gcal" onclick="openGoogleCalendar({title:'[RIG MOHO] ${rem.title.replace(/'/g,"")}', dateStr:'${rem.date}', timeStr:'${rem.time}', details:'${(rem.notes||"").replace(/'/g,"")}'})">📅 Agregar a Google Calendar</button></td>
-                      <td>${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteReminder('${rem.id}')">🗑️</button>` : ""}</td>
+                    <tr>
+                      <td><strong>${rem.date}</strong> <span style="color:var(--cyan);">${rem.time}</span></td>
+                      <td><strong>${rem.title}</strong><div style="font-size:12px;color:var(--text-muted);">${rem.notes || ""}</div></td>
+                      <td>${rig ? `<a href="#/rig/${rig.id}" style="color:var(--primary);">${rig.name}</a>` : "General"}</td>
+                      <td><span class="badge ${rem.completed ? 'st-aprobado' : 'st-revision'}">${rem.completed ? "Completado" : "Pendiente"}</span></td>
+                      <td>
+                        <div style="display:flex;gap:6px;">
+                          <button class="btn btn-sm btn-gcal" onclick="openGoogleCalendar({title:'[RIG] ${rem.title.replace(/'/g,"")}', dateStr:'${rem.date}', timeStr:'${rem.time}', details:'${(rem.notes||"").replace(/'/g,"")}'})">📅 Google Calendar</button>
+                          ${isAdmin() ? `
+                            <button class="btn btn-sm" onclick="toggleReminderDone('${rem.id}')">${rem.completed ? "Reabrir" : "✓ Hecho"}</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReminder('${rem.id}')">🗑️</button>
+                          ` : ""}
+                        </div>
+                      </td>
                     </tr>
                   `;
                 }).join("")}
@@ -4557,22 +4559,44 @@
       `;
     }
 
-    function addReminder(e) { e.preventDefault(); if (!isAdmin()) return; state.reminders.push({ id: "rem-" + Date.now(), title: document.getElementById("rem-title").value.trim(), rigId: document.getElementById("rem-rig").value, date: document.getElementById("rem-date").value, time: document.getElementById("rem-time").value, notes: document.getElementById("rem-notes").value.trim(), completed: false }); commitSave("Recordatorio guardado"); }
-    function toggleReminderDone(id) { if (!isAdmin()) return; const r = state.reminders.find(x => x.id === id); if (r) { r.completed = !r.completed; commitSave("Actualizado"); } }
-    function deleteReminder(id) { if (!isAdmin()) return; state.reminders = state.reminders.filter(x => x.id !== id); commitSave("Eliminado"); }
+    function createReminder(e) {
+      e.preventDefault();
+      if (!isAdmin()) return;
+      state.reminders.unshift({
+        id: "rem-" + Date.now(),
+        title: document.getElementById("rem-title").value.trim(),
+        rigId: document.getElementById("rem-rig").value,
+        date: document.getElementById("rem-date").value,
+        time: document.getElementById("rem-time").value,
+        notes: document.getElementById("rem-notes").value.trim(),
+        completed: false
+      });
+      commitSave("Recordatorio creado");
+    }
+
+    function toggleReminderDone(id) {
+      if (!isAdmin()) return;
+      const r = state.reminders.find(x => x.id === id);
+      if (r) { r.completed = !r.completed; commitSave("Estado de recordatorio actualizado"); }
+    }
+
+    function deleteReminder(id) {
+      if (!isAdmin()) return;
+      state.reminders = state.reminders.filter(x => x.id !== id);
+      commitSave("Recordatorio eliminado");
+    }
 
     // =========================================================================
-    // 11. CENTRO DE ENLACES COMPARTIDOS (?v=L-XXXX / ?v=D-XXXX)
+    // 11. CENTRO DE ENLACES CORTOS (?v=L-XXXX / ?v=D-XXXX) Y LINK DIRECTO POR ASSET
     // =========================================================================
-
-    function buildDirectRigShareURL(rigId, permission = "colaborador", explicitCode = "") {
-      const base = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
-      const sep = base.includes("?") ? "&" : "?";
-      const code = explicitCode || generateShortCode(permission);
-      return {
-        code,
-        url: `${base}${sep}v=${code}#/rig/${rigId}`
-      };
+    function buildShareURL(code, rigId = "") {
+      const base = (HAS_GAS_API && SERVER_WEBAPP_URL)
+        ? SERVER_WEBAPP_URL.split("?")[0]
+        : (window.location.origin && window.location.origin !== "null"
+            ? (window.location.origin + window.location.pathname)
+            : window.location.href.split("?")[0].split("#")[0]);
+      const hashPart = rigId ? `#/rig/${rigId}` : "#/dashboard";
+      return `${base}?v=${encodeURIComponent(code)}${hashPart}`;
     }
 
     function openRigShareModal(rigId) {
@@ -4593,177 +4617,104 @@
       const rigId = document.getElementById("rsm-rig-id").value;
       const perm = document.getElementById("rsm-perm").value;
       const existing = (state.shareLinks || []).find(l => l.active && l.rigId === rigId && l.permission === perm);
-      const { url } = buildDirectRigShareURL(rigId, perm, existing ? existing.id : "");
+      const code = existing ? existing.id : generateShortCode(perm);
+      const url = buildShareURL(code, rigId);
       document.getElementById("rsm-url-output").value = url;
-      const prev = document.getElementById("rsm-open-preview");
-      if (prev) prev.href = url;
+      document.getElementById("rsm-url-output").dataset.code = code;
+      const prevBtn = document.getElementById("rsm-open-preview");
+      if (prevBtn) prevBtn.href = url;
     }
 
-    async function copyRigShareModalURL() {
-      const url = document.getElementById("rsm-url-output").value;
-      await copyRawText(url);
+    function copyRigShareModalURL() {
+      const inp = document.getElementById("rsm-url-output");
+      if (!inp) return;
+      copyText(inp.value);
     }
 
-    async function registerRigShareLinkAndCopy() {
+    function registerRigShareLinkAndCopy() {
       const rigId = document.getElementById("rsm-rig-id").value;
       const perm = document.getElementById("rsm-perm").value;
-      const currentUrl = document.getElementById("rsm-url-output").value;
+      const code = document.getElementById("rsm-url-output").dataset.code || generateShortCode(perm);
+      const url = document.getElementById("rsm-url-output").value;
       const rig = state.rigs.find(r => r.id === rigId);
-      if (!rig) return;
 
-      const matchCode = currentUrl.match(/[?&]v=([A-Z0-9-]+)/i);
-      const code = matchCode ? matchCode[1].toUpperCase() : generateShortCode(perm);
-
-      if (isAdmin()) {
-        if (!state.shareLinks) state.shareLinks = [];
-        const exists = state.shareLinks.find(l => l.id.toUpperCase() === code);
-        if (!exists) {
-          state.shareLinks.unshift({
-            id: code,
-            label: `Directo: ${rig.name} (${perm})`,
-            permission: perm,
-            rigId: rig.id,
-            createdAt: todayISO(0),
-            active: true
-          });
-          await commitSave(`Enlace directo registrado (?v=${code})`);
+      if (!state.shareLinks) state.shareLinks = [];
+      if (!state.shareLinks.some(l => l.id === code)) {
+        state.shareLinks.unshift({
+          id: code,
+          label: `Enlace directo: ${rig ? rig.name : rigId}`,
+          permission: perm,
+          rigId,
+          createdAt: todayISO(0),
+          active: true
+        });
+        if (isAdmin() || canUploadContent() || canCommentObservations()) {
+          commitSave(`Enlace directo ${code} registrado`);
         }
       }
-      await copyRawText(currentUrl);
-    }
-
-    function addRigComment(e, rigId) {
-      e.preventDefault();
-      if (!isAdmin() && !canCommentObservations() && !canUploadContent()) return;
-      const rig = state.rigs.find(r => r.id === rigId);
-      if (!rig) return;
-      if (!rig.comments) rig.comments = [];
-      const author = document.getElementById("rc-author").value.trim() || "Colaborador";
-      const link = document.getElementById("rc-link").value.trim();
-      const text = document.getElementById("rc-text").value.trim();
-      if (!text) return;
-
-      rig.comments.unshift({
-        id: "cm-" + Date.now(),
-        author,
-        link,
-        text,
-        date: new Date().toLocaleString()
-      });
-      if (!rig.history) rig.history = [];
-      rig.history.unshift({
-        date: new Date().toLocaleString(),
-        action: `Comentario publicado por ${author}`
-      });
-      commitSave(`Comentario agregado en ${rig.name}`);
-    }
-
-    function deleteRigComment(rigId, idx) {
-      if (!isAdmin()) return;
-      const rig = state.rigs.find(r => r.id === rigId);
-      if (rig && rig.comments && confirm("¿Eliminar este comentario?")) {
-        rig.comments.splice(idx, 1);
-        commitSave("Comentario eliminado");
-      }
-    }
-
-    function buildShareURL(linkObj) {
-      const base = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
-      const sep = base.includes("?") ? "&" : "?";
-      const hashTarget = linkObj.rigId ? `#/rig/${linkObj.rigId}` : "";
-      return `${base}${sep}v=${linkObj.id}${hashTarget}`;
+      copyText(url);
+      closeRigShareModal();
     }
 
     function renderShareCenter(el) {
-      if (!isAdmin()) {
-        el.innerHTML = `<div class="panel">Acceso restringido al administrador.</div>`;
-        return;
-      }
       const links = state.shareLinks || [];
-      const adminUrl = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
-
       el.innerHTML = `
-        <div class="panel" style="border-left:4px solid var(--cyan);background:rgba(6,182,212,0.06);">
-          <div class="panel-header" style="margin-bottom:8px;">
-            <div class="panel-title" style="color:#67e8f9;">👑 Tu Enlace de Administrador (Control Total)</div>
-            <button class="btn btn-sm btn-primary" onclick="copyRawText('${adminUrl}')">📋 Copiar Link Admin</button>
-          </div>
-          <div class="short-link-box" style="max-width:100%;width:100%;">${adminUrl}</div>
+        <div class="panel" style="border-left:4px solid var(--cyan);">
+          <div class="panel-title" style="margin-bottom:6px;">🔗 Enlaces Cortos para Invitados, Revisores y Colaboradores</div>
+          <p style="font-size:12.5px;color:var(--text-muted);">
+            Generá enlaces con código corto (<code>?v=L-XXXX</code> Solo Lectura, <code>?v=D-XXXX</code> Lectura + Descarga, <code>?v=C-XXXX</code> Comentarista o <code>?v=U-XXXX</code> Colaborador para subir archivos/videos y comentar). Podés apuntarlos a todo el workspace o directamente a un Rig / Vehículo / Custom.
+          </p>
         </div>
 
-        <div class="panel" style="border-left:4px solid var(--primary);">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">🔗 Enlaces Compartidos Cortos (Lector, Descarga y Comentarista)</div>
-              <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">
-                Cada enlace agrega el parámetro corto <code>?v=L-XXXX</code> (Solo ver), <code>?v=D-XXXX</code> (Ver y descargar) o <code>?v=C-XXXX</code> (Comentarista en Observaciones).
-              </div>
+        <div class="panel">
+          <div class="panel-title" style="margin-bottom:12px;">➕ Generar Nuevo Enlace Compartido</div>
+          <form onsubmit="createShareLink(event)" class="form-grid">
+            <div class="form-group"><label>Etiqueta / Destinatario *</label><input type="text" id="sl-label" required placeholder="Ej: Colaborador Turnaround / Animación" /></div>
+            <div class="form-group">
+              <label>Permiso del Enlace</label>
+              <select id="sl-perm">
+                <option value="colaborador">📤💬 Colaborador (Subir contenido + Comentar + Descargar)</option>
+                <option value="comentarista">💬 Comentarista (Ver + Comentar)</option>
+                <option value="descarga">📥 Lectura + Descarga (Archivos habilitados)</option>
+                <option value="lector">🔒 Solo Lectura (Sin descarga)</option>
+              </select>
             </div>
-          </div>
-
-          <form onsubmit="createShareLink(event)" style="background:var(--bg-card);padding:15px;border-radius:10px;border:1px solid var(--border);margin-bottom:18px;">
-            <div class="form-grid">
-              <div class="form-group">
-                <label>¿A quién le compartís este link? (Nombre / Equipo) *</label>
-                <input type="text" id="shr-label" required placeholder="Ej: Director de Layout / Cliente / Animadores" />
-              </div>
-              <div class="form-group">
-                <label>Permiso del Enlace *</label>
-                <select id="shr-perm">
-                  <option value="colaborador">📤💬 Colaborador (Subir archivos/contenido + Dejar comentarios + Descargar)</option>
-                  <option value="lector">🔒 Solo ver (Lector — No edita ni descarga archivos)</option>
-                  <option value="descarga">📥 Ver y descargar archivos habilitados (Descarga — No edita nada)</option>
-                  <option value="comentarista">💬 Comentarista (Deja comentarios en Observaciones de tareas)</option>
-                </select>
-              </div>
+            <div class="form-group">
+              <label>Destino (Opcional: abrir directo en un Asset)</label>
+              <select id="sl-rig">
+                <option value="">Todo el Workspace (Dashboard)</option>
+                ${state.rigs.map(r => `<option value="${r.id}">${r.name} (${r.category})</option>`).join("")}
+              </select>
             </div>
-            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-              <button type="submit" class="btn btn-primary">+ Generar Enlace Compartido</button>
-            </div>
+            <div class="form-group" style="justify-content:flex-end;"><button type="submit" class="btn btn-save">+ Generar Enlace</button></div>
           </form>
+        </div>
 
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">📋 Enlaces Generados (${links.length})</div></div>
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>Destinatario</th>
-                  <th>Código Corto</th>
-                  <th>Permiso Asignado</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Código</th><th>Etiqueta</th><th>Permiso</th><th>Destino</th><th>Enlace</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>
-                ${links.map(lk => {
-                  const fullUrl = buildShareURL(lk);
+                ${links.map(l => {
+                  const fullUrl = buildShareURL(l.id, l.rigId || "");
+                  const targetRig = l.rigId ? state.rigs.find(r => r.id === l.rigId) : null;
                   return `
                     <tr>
+                      <td><strong style="color:var(--cyan);font-family:monospace;">${l.id}</strong></td>
+                      <td><strong>${l.label}</strong></td>
                       <td>
-                        <strong>${lk.label}</strong>
-                        <div style="font-size:11.5px;color:var(--text-dim);">Creado: ${lk.createdAt}</div>
+                        <span class="badge ${l.permission === 'colaborador' || l.permission === 'comentarista' ? 'st-aprobado' : (l.permission === 'descarga' ? 'st-progreso' : 'st-revision')}">
+                          ${l.permission === 'colaborador' ? '📤💬 Colaborador' : (l.permission === 'comentarista' ? '💬 Comentarista' : (l.permission === 'descarga' ? '📥 Descarga' : '🔒 Solo Lectura'))}
+                        </span>
                       </td>
+                      <td style="font-size:12px;">${targetRig ? `🎯 <strong>${targetRig.name}</strong>` : "Workspace General"}</td>
+                      <td><div class="short-link-box" title="${fullUrl}">${fullUrl}</div></td>
+                      <td><span class="badge ${l.active ? 'st-aprobado' : 'st-bloqueado'}">${l.active ? "Activo" : "Revocado"}</span></td>
                       <td>
-                        <div class="short-link-box" title="${fullUrl}">?v=${lk.id}</div>
-                      </td>
-                      <td>
-                        <select onchange="changeSharePermission('${lk.id}', this.value)" style="font-weight:700;">
-                          <option value="colaborador" ${lk.permission==="colaborador"?"selected":""}>📤💬 Colaborador (Subir y Comentar)</option>
-                          <option value="lector" ${lk.permission==="lector"?"selected":""}>🔒 Solo ver (Lector)</option>
-                          <option value="descarga" ${lk.permission==="descarga"?"selected":""}>📥 Descarga de archivos (Descarga)</option>
-                          <option value="comentarista" ${lk.permission==="comentarista"?"selected":""}>💬 Comentarista (Observaciones)</option>
-                        </select>
-                      </td>
-                      <td>
-                        <span class="badge ${lk.active ? 'st-aprobado' : 'st-bloqueado'}">${lk.active ? 'Activo' : 'Revocado'}</span>
-                      </td>
-                      <td>
-                        <div style="display:flex;gap:7px;flex-wrap:wrap;">
-                          <button class="btn btn-sm btn-primary" onclick="copyShareLink('${lk.id}')">📋 Copiar Link</button>
-                          <a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm">👁️ Probar Link</a>
-                          <button class="btn btn-sm btn-danger" onclick="toggleRevokeShareLink('${lk.id}')">
-                            ${lk.active ? '🚫 Revocar' : '✅ Reactivar'}
-                          </button>
-                          <button class="btn btn-sm btn-danger" onclick="deleteShareLink('${lk.id}')">🗑️</button>
+                        <div style="display:flex;gap:6px;">
+                          <button class="btn btn-sm btn-primary" onclick="copyText('${fullUrl}')">📋 Copiar</button>
+                          <button class="btn btn-sm" onclick="toggleShareLink('${l.id}')">${l.active ? "Revocar" : "Activar"}</button>
                         </div>
                       </td>
                     </tr>
@@ -4779,495 +4730,316 @@
     function createShareLink(e) {
       e.preventDefault();
       if (!isAdmin()) return;
-      const label = document.getElementById("shr-label").value.trim();
-      const permission = document.getElementById("shr-perm").value;
-      const shortId = generateShortCode(permission);
+      const perm = document.getElementById("sl-perm").value;
+      const rigId = document.getElementById("sl-rig").value || "";
+      const code = generateShortCode(perm);
       state.shareLinks.unshift({
-        id: shortId,
-        label,
-        permission,
+        id: code,
+        label: document.getElementById("sl-label").value.trim(),
+        permission: perm,
+        rigId,
         createdAt: todayISO(0),
         active: true
       });
-      commitSave(`Enlace compartido ?v=${shortId} creado`);
+      commitSave(`Enlace ${code} generado`);
     }
 
-    function changeSharePermission(linkId, perm) {
+    function toggleShareLink(id) {
       if (!isAdmin()) return;
-      const lk = state.shareLinks.find(x => x.id === linkId);
-      if (lk) {
-        lk.permission = perm;
-        const suffix = lk.id.includes("-") ? lk.id.split("-")[1] : lk.id;
-        const prefix = perm === "colaborador" ? "U-" : (perm === "descarga" ? "D-" : (perm === "comentarista" ? "C-" : "L-"));
-        lk.id = prefix + suffix;
-        commitSave(`Permiso actualizado a ${perm} (?v=${lk.id})`);
+      const l = state.shareLinks.find(x => x.id === id);
+      if (l) { l.active = !l.active; commitSave("Estado del enlace actualizado"); }
+    }
+
+    function copyText(txt) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(() => showToast("📋 Enlace copiado al portapapeles"));
+      } else {
+        prompt("Copiá el enlace:", txt);
       }
-    }
-
-    function toggleRevokeShareLink(linkId) {
-      if (!isAdmin()) return;
-      const lk = state.shareLinks.find(x => x.id === linkId);
-      if (lk) { lk.active = !lk.active; commitSave(lk.active ? "Enlace reactivado" : "Enlace revocado"); }
-    }
-
-    function deleteShareLink(linkId) {
-      if (!isAdmin()) return;
-      state.shareLinks = state.shareLinks.filter(x => x.id !== linkId);
-      commitSave("Enlace eliminado");
-    }
-
-    async function copyRawText(txt) {
-      try {
-        await navigator.clipboard.writeText(txt);
-        showToast("✓ Enlace copiado al portapapeles");
-      } catch (e) {
-        prompt("Copiá este enlace:", txt);
-      }
-    }
-
-    async function copyShareLink(linkId) {
-      const lk = state.shareLinks.find(x => x.id === linkId);
-      if (!lk) return;
-      await copyRawText(buildShareURL(lk));
     }
 
     // =========================================================================
-    // 12. REPORTES Y CONFIGURACIÓN (CON FIREBASE OPCIONAL PARA STANDALONE)
+    // 12. REPORTES Y CONFIGURACIÓN CLOUD
     // =========================================================================
     function renderReports(el) {
       el.innerHTML = `
-        <div class="grid-3">
-          <div class="panel">
-            <div class="panel-title">📗 Exportar a Excel (.xls)</div>
-            <p style="color:var(--text-muted);font-size:13px;margin:10px 0 15px;">Planilla completa con rigs, carpetas, customs y fechas.</p>
-            <button class="btn btn-primary" onclick="exportToExcel()">⬇️ Descargar Excel</button>
-          </div>
-          <div class="panel">
-            <div class="panel-title">📕 Reporte General PDF</div>
-            <p style="color:var(--text-muted);font-size:13px;margin:10px 0 15px;">Vista ejecutiva limpia lista para guardar como PDF.</p>
-            <button class="btn btn-primary" onclick="window.print()">🖨️ Guardar PDF General</button>
-          </div>
-          <div class="panel">
-            <div class="panel-title">💾 Respaldo JSON</div>
-            <p style="color:var(--text-muted);font-size:13px;margin:10px 0 15px;">Exportar o importar copia completa de la base de datos.</p>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">📑 Exportación de Datos y Reportes</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn btn-save" onclick="downloadJSONBackup()">⬇️ Exportar JSON</button>
-              ${isAdmin() ? `<label class="btn" style="cursor:pointer;">⬆️ Importar JSON<input type="file" accept=".json" style="display:none;" onchange="importJSONBackup(event)" /></label>` : ""}
+              <button class="btn btn-primary" onclick="exportCSV()">📊 Exportar CSV</button>
+              <button class="btn" onclick="exportJSONBackup()">💾 Respaldo JSON</button>
+              <button class="btn" onclick="window.print()">🖨️ Imprimir / PDF</button>
             </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Asset</th><th>Carpeta</th><th>Complejidad</th><th>Responsable</th><th>Est. Total</th><th>Real</th><th>Avance</th><th>Estado</th><th>Reporte</th></tr></thead>
+              <tbody>
+                ${state.rigs.map(r => {
+                  const m = calcRigMetrics(r);
+                  return `
+                    <tr>
+                      <td><strong>${r.name}</strong></td>
+                      <td>${getRigFolderName(r.folderId)}</td>
+                      <td><span class="badge ${complexityClass(r.complexity)}">${r.complexity}</span></td>
+                      <td>${getAssigneeName(r.assigneeId)}</td>
+                      <td><strong>${m.totalEstDays}d</strong></td>
+                      <td>${r.actualDays}d</td>
+                      <td>${m.progress}%</td>
+                      <td><span class="badge ${statusClass(r.status)}">${r.status}</span></td>
+                      <td><button class="btn btn-sm" onclick="exportSingleRigReport('${r.id}')">📄 Ficha</button></td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
           </div>
         </div>
       `;
     }
 
-    function exportToExcel() {
-      let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table border="1"><thead><tr style="background:#1886F0;color:#fff;font-weight:bold;">
-        <th>Asset</th><th>Carpeta</th><th>Categoria</th><th>Complejidad</th><th>Responsable</th><th>Inicio</th><th>Entrega Est.</th><th>Total Dias Est.</th><th>Avance %</th><th>Estado</th>
-      </tr></thead><tbody>`;
-      state.rigs.forEach(r => {
+    function exportCSV() {
+      const headers = ["ID", "Nombre", "Categoria", "Carpeta", "Complejidad", "Responsable", "Inicio", "DiasBase", "DiasCustoms", "DiasLayout", "TotalEstimado", "DiasReales", "EntregaEstimada", "AvancePct", "Estado"];
+      const rows = state.rigs.map(r => {
         const m = calcRigMetrics(r);
-        html += `<tr><td>${r.name}</td><td>${getRigFolderName(r.folderId)}</td><td>${r.category}</td><td>${r.complexity}</td><td>${getAssigneeName(r.assigneeId)}</td><td>${r.startDate}</td><td>${m.endDate}</td><td>${m.totalEstDays}</td><td>${m.progress}%</td><td>${r.status}</td></tr>`;
+        return [r.id, r.name, r.category, getRigFolderName(r.folderId), r.complexity, getAssigneeName(r.assigneeId), r.startDate, r.baseEstDays, m.customsDays, m.layoutDays, m.totalEstDays, r.actualDays, m.endDate, m.progress, r.status]
+          .map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
       });
-      html += `</tbody></table></body></html>`;
-      const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+      const blob = new Blob(["\uFEFF" + [headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `RIG_MANAGEMENT_SYSTEM_${todayISO(0)}.xls`;
+      a.download = `rig-management-reporte-${todayISO(0)}.csv`;
       a.click();
+      showToast("📊 CSV exportado");
+    }
+
+    function exportJSONBackup() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `rig-management-backup-${todayISO(0)}.json`;
+      a.click();
+      showToast("💾 Respaldo JSON descargado");
     }
 
     function exportSingleRigReport(rigId) {
-      const r = state.rigs.find(x => x.id === rigId);
-      if (!r) return;
-      const m = calcRigMetrics(r);
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (!rig) return;
+      const m = calcRigMetrics(rig);
       const w = window.open("", "_blank");
       w.document.write(`
-        <html><head><title>Reporte Rig - ${r.name}</title>
-        <style>body{font-family:Arial,sans-serif;padding:30px;color:#111}h1{color:#1886F0}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f1f5f9}</style>
+        <html><head><title>Reporte Rig - ${rig.name}</title>
+        <style>body{font-family:Arial,sans-serif;padding:30px;color:#111;}h1{border-bottom:2px solid #1886F0;padding-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:13px;}th{background:#f1f5f9;}</style>
         </head><body>
-        <h1>FICHA TÉCNICA DE RIGGING — ${r.name}</h1>
-        <p><strong>Carpeta:</strong> ${getRigFolderName(r.folderId)} | <strong>Categoría:</strong> ${r.category} | <strong>Complejidad:</strong> ${r.complexity} | <strong>Responsable:</strong> ${getAssigneeName(r.assigneeId)}</p>
-        <p><strong>Inicio:</strong> ${r.startDate} | <strong>Entrega Estimada:</strong> ${m.endDate} | <strong>Jornadas Totales:</strong> ${m.totalEstDays}d | <strong>Avance:</strong> ${m.progress}%</p>
-        <p><strong>Observaciones:</strong> ${r.notes || "Sin observaciones"}</p>
-        <h3>Customs (${(r.customs||[]).length})</h3>
-        <table><tr><th>Tipo</th><th>Nombre</th><th>Estado</th><th>Est. (d)</th></tr>${(r.customs||[]).map(c=>`<tr><td>${c.type}</td><td>${c.name}</td><td>${c.status}</td><td>${c.estDays}</td></tr>`).join("")}</table>
-        <h3>Etapas</h3>
-        <table><tr><th>Etapa</th><th>Estado</th></tr>${r.stages.map(s=>`<tr><td>${s.name}</td><td>${s.status}</td></tr>`).join("")}</table>
-        <script>window.print();<\/script></body></html>
+          <h1>Ficha Técnica de Rig: ${rig.name}</h1>
+          <p><strong>Categoría:</strong> ${rig.category} | <strong>Carpeta:</strong> ${getRigFolderName(rig.folderId)} | <strong>Complejidad:</strong> ${rig.complexity} | <strong>Estado:</strong> ${rig.status}</p>
+          <p><strong>Responsable:</strong> ${getAssigneeName(rig.assigneeId)} | <strong>Jornadas Estimadas:</strong> ${m.totalEstDays}d | <strong>Entrega Est.:</strong> ${m.endDate} | <strong>Avance:</strong> ${m.progress}%</p>
+          <h3>Customs (${(rig.customs||[]).length})</h3>
+          <table><thead><tr><th>Tipo</th><th>Nombre</th><th>Estado</th><th>Est. (días)</th></tr></thead>
+          <tbody>${(rig.customs||[]).map(c=>`<tr><td>${c.type}</td><td>${c.name}</td><td>${c.status}</td><td>+${c.estDays}d</td></tr>`).join("") || "<tr><td colspan='4'>Sin customs</td></tr>"}</tbody></table>
+          <h3>Etapas (14)</h3>
+          <table><thead><tr><th>Etapa</th><th>Estado</th><th>Días</th></tr></thead>
+          <tbody>${rig.stages.map(s=>`<tr><td>${s.name}</td><td>${s.status}</td><td>${s.days}d</td></tr>`).join("")}</tbody></table>
+          <script>window.print();<\/script>
+        </body></html>
       `);
       w.document.close();
     }
 
-    function downloadJSONBackup() {
-      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "rig_management_db.json";
-      a.click();
-    }
-
-    function importJSONBackup(e) {
-      if (!isAdmin()) return;
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const parsed = JSON.parse(ev.target.result);
-          if (parsed && parsed.rigs) { state = parsed; normalizeStateArrays(); commitSave("Base de datos importada"); }
-        } catch (err) { alert("Archivo JSON inválido."); }
-      };
-      reader.readAsText(file);
-    }
-
     function renderSettings(el) {
+      if (!isAdmin()) { el.innerHTML = `<div class="panel">Solo el administrador puede cambiar la configuración.</div>`; return; }
+      const adminList = (state.adminEmails || []).join(", ");
+      const teamCanDl = state.teamDefaultDownload !== false;
       el.innerHTML = `
         <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">⚙️ Configuración del Estudio y Sincronización Cloud</div>
-            <button class="btn btn-save btn-sm" onclick="saveSettings()">💾 Guardar Configuración</button>
-          </div>
+          <div class="panel-title" style="margin-bottom:12px;">☁️ Configuración del Workspace y Firebase Realtime Database</div>
           <div class="form-grid">
-            <div class="form-group"><label>Nombre del Estudio</label><input type="text" id="cfg-studio" value="${state.studioName}" /></div>
-            <div class="form-group"><label>Código Workspace</label><input type="text" id="cfg-ws" value="${state.workspaceId}" /></div>
+            <div class="form-group"><label>Nombre del Estudio / Proyecto</label><input type="text" id="cfg-studio" value="${state.studioName}" /></div>
+            <div class="form-group"><label>ID del Workspace</label><input type="text" id="cfg-ws" value="${state.workspaceId}" /></div>
+            <div class="form-group" style="grid-column:1 / -1;"><label>URL de Firebase Realtime Database</label><input type="url" id="cfg-fb" value="${state.firebaseUrl || DEFAULT_FIREBASE_URL}" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" /></div>
           </div>
-          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
-            <div class="panel-title" style="font-size:14px;margin-bottom:10px;">🔐 Seguridad y Roles de Usuarios (Firebase Authentication)</div>
-            <div class="form-grid">
-              <div class="form-group">
-                <label>Correos con Permiso de Administrador (separados por coma)</label>
-                <input type="text" id="cfg-admins" value="${(state.adminEmails || []).join(', ')}" placeholder="admin@estudio.com" />
-                <span style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-                  Sesión actual: <strong>${currentAuthUser ? currentAuthUser.email : 'N/A'}</strong>. Cualquier otro usuario creado en Firebase Authentication entrará automáticamente en modo Equipo (solo lectura/descarga).
-                </span>
-              </div>
-              <div class="form-group">
-                <label>Permiso por defecto para usuarios del Equipo (no administradores)</label>
-                <select id="cfg-team-dl">
-                  <option value="true" ${state.teamDefaultDownload !== false ? "selected" : ""}>📥 Lectura + Descarga de archivos habilitados</option>
-                  <option value="false" ${state.teamDefaultDownload === false ? "selected" : ""}>🔒 Solo Lectura (sin descarga)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
-            <div class="panel-title" style="font-size:14px;margin-bottom:6px;">📧 Alertas Automáticas por Gmail al Crear o Asignar Tareas</div>
-            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-              Conectá tu Google Apps Script Web App para enviar un correo automático cada vez que creás una tarea nueva o cambiás el responsable asignado. Configurá el Gmail de cada integrante en la pestaña <strong>Equipo &amp; Carpetas</strong>.
-            </p>
-            <div class="form-grid">
-              <div class="form-group">
-                <label>URL de Google Apps Script (Web App /exec)</label>
-                <input type="url" id="cfg-gmail-webhook" value="${state.gmailWebhookUrl || ''}" placeholder="https://script.google.com/macros/s/.../exec" />
-              </div>
-              <div class="form-group">
-                <label>Correo para Copia / Confirmación (opcional)</label>
-                <input type="email" id="cfg-gmail-cc" value="${state.gmailCcEmail || ''}" placeholder="tu-correo@gmail.com" />
-              </div>
-              <div class="form-group">
-                <label>Estado de Envío Automático</label>
-                <select id="cfg-gmail-enabled">
-                  <option value="true" ${state.gmailAlertsEnabled !== false ? "selected" : ""}>✅ Activo (enviar al crear o reasignar tarea)</option>
-                  <option value="false" ${state.gmailAlertsEnabled === false ? "selected" : ""}>⏸️ Pausado</option>
-                </select>
-              </div>
-            </div>
-            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="testGmailAlert()">📨 Enviar Correo de Prueba</button>
-              <button type="button" class="btn btn-sm" onclick="copyAppsScriptCode()">📋 Copiar Código para Google Apps Script</button>
-            </div>
-          </div>
+          <div style="margin-top:14px;display:flex;gap:10px;"><button class="btn btn-save" onclick="saveSettings()">💾 Guardar Configuración</button></div>
+        </div>
 
-          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:var(--text-muted);font-size:12.5px;">Restaurar datos iniciales de demostración:</span>
-            <button class="btn btn-danger btn-sm" onclick="resetDemoData()">🔄 Restaurar Datos Precargados</button>
+        <div class="panel" style="border-left:4px solid var(--primary);">
+          <div class="panel-title" style="margin-bottom:6px;">🔐 Permisos por Cuenta de Correo (Firebase Auth)</div>
+          <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">
+            Sesión actual: <strong style="color:var(--cyan);">${currentAuthUser?.email || "No autenticado"}</strong>. Los correos listados como Administradores tienen control total; cualquier otra cuenta autenticada del equipo entra en modo lectura/descarga.
+          </p>
+          <div class="form-grid">
+            <div class="form-group" style="grid-column:1 / -1;">
+              <label>Correos Administradores (separados por coma)</label>
+              <input type="text" id="cfg-admins" value="${adminList}" placeholder="admin@estudio.com, director@estudio.com" />
+            </div>
+            <div class="form-group">
+              <label>Permiso por defecto para otros usuarios autenticados</label>
+              <select id="cfg-team-dl">
+                <option value="true" ${teamCanDl ? "selected" : ""}>📥 Lectura + Descarga de archivos habilitados</option>
+                <option value="false" ${!teamCanDl ? "selected" : ""}>🔒 Solo Lectura (sin descarga)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:10px;">
+            <button class="btn btn-save" onclick="saveAuthPermissions()">💾 Guardar Permisos de Usuarios</button>
           </div>
         </div>
       `;
     }
 
     function saveSettings() {
-      state.studioName = document.getElementById("cfg-studio").value;
-      state.workspaceId = document.getElementById("cfg-ws").value;
-      const adminsInput = document.getElementById("cfg-admins");
-      if (adminsInput) {
-        state.adminEmails = adminsInput.value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-      }
-      const teamDlInput = document.getElementById("cfg-team-dl");
-      if (teamDlInput) {
-        state.teamDefaultDownload = teamDlInput.value === "true";
-      }
-      const whInput = document.getElementById("cfg-gmail-webhook");
-      if (whInput) state.gmailWebhookUrl = whInput.value.trim();
-      const ccInput = document.getElementById("cfg-gmail-cc");
-      if (ccInput) state.gmailCcEmail = ccInput.value.trim();
-      const enInput = document.getElementById("cfg-gmail-enabled");
-      if (enInput) state.gmailAlertsEnabled = enInput.value === "true";
+      state.studioName = document.getElementById("cfg-studio").value.trim() || state.studioName;
+      state.workspaceId = document.getElementById("cfg-ws").value.trim() || state.workspaceId;
+      state.firebaseUrl = (document.getElementById("cfg-fb").value || "").trim() || DEFAULT_FIREBASE_URL;
       commitSave("Configuración guardada");
     }
 
-    function resetDemoData() {
-      if (confirm("¿Restaurar todos los personajes y vehículos iniciales?")) {
-        state = buildDefaultState();
-        commitSave("Datos iniciales restaurados");
+    function saveAuthPermissions() {
+      const raw = (document.getElementById("cfg-admins").value || "");
+      const emails = raw.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (emails.length === 0 && currentAuthUser && currentAuthUser.email) {
+        emails.push(currentAuthUser.email.toLowerCase().trim());
       }
+      state.adminEmails = emails;
+      state.teamDefaultDownload = document.getElementById("cfg-team-dl").value === "true";
+      resolveSharedSession();
+      commitSave("Permisos de usuarios guardados");
     }
 
     // =========================================================================
-    // 13. CREACIÓN, DUPLICACIÓN Y ELIMINACIÓN DE RIGS
+    // 13. MODALES Y ACCIONES RÁPIDAS
     // =========================================================================
-    const DEFAULT_RIG_CATEGORIES = [
-      "Personaje Principal",
-      "Personaje Secundario",
-      "Episódico",
-      "Vehículo",
-      "Custom"
-    ];
+    const DEFAULT_RIG_CATEGORIES = ["Personaje Principal", "Personaje Secundario", "Episódico", "Vehículo", "Custom"];
 
-    function openNewRigModal(defaultCat = "Personaje Principal", isTimelineContext = false) {
+    function openNewRigModal(defaultCat = null, isTimelineTask = false) {
       if (!isAdmin()) return;
-      const onTimeline = isTimelineContext || (window.location.hash || "").startsWith("#/timeline");
-      const cats = onTimeline ? TIMELINE_CATEGORIES : DEFAULT_RIG_CATEGORIES;
       const catSel = document.getElementById("nr-category");
-      catSel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("");
-      catSel.value = cats.includes(defaultCat) ? defaultCat : cats[0];
+      const optionsToUse = isTimelineTask ? TIMELINE_CATEGORIES : DEFAULT_RIG_CATEGORIES;
+      catSel.innerHTML = optionsToUse.map(c => `<option value="${c}">${c}</option>`).join("");
+      if (defaultCat && optionsToUse.includes(defaultCat)) {
+        catSel.value = defaultCat;
+      } else if (isTimelineTask) {
+        catSel.value = TIMELINE_CATEGORIES[0];
+      }
+
+      document.getElementById("nr-folder").innerHTML = `<option value="">Sin carpeta</option>` +
+        (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
+      document.getElementById("nr-assignee").innerHTML = `<option value="">Sin asignar</option>` +
+        state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
       document.getElementById("nr-start").value = todayISO(0);
-      document.getElementById("nr-folder").innerHTML = `<option value="">Sin carpeta</option>` + (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
-      document.getElementById("nr-assignee").innerHTML = `<option value="">Sin asignar</option>` + state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+      document.getElementById("nr-complexity").value = "Media";
+      document.getElementById("nr-days").value = COMPLEXITY_DEFAULTS["Media"];
       document.getElementById("new-rig-modal").classList.add("open");
     }
+
     function closeNewRigModal() { document.getElementById("new-rig-modal").classList.remove("open"); }
 
     function onNewRigComplexityChange() {
-      const c = document.getElementById("nr-complexity").value;
-      if (COMPLEXITY_DEFAULTS[c]) document.getElementById("nr-days").value = COMPLEXITY_DEFAULTS[c];
-    }
-
-    
-    // =========================================================================
-    // 14. ALERTAS AUTOMÁTICAS POR GMAIL (GOOGLE APPS SCRIPT WEBHOOK)
-    // =========================================================================
-    const GAS_MAILER_SNIPPET = `function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    if (data.action === "sendTaskAlert") {
-      var asunto = "[RIG MOHO] " + (data.eventType || "Nueva tarea") + ": " + data.taskName;
-      var htmlBody =
-        "<div style='font-family:Arial,sans-serif;color:#1e293b;max-width:600px;border:1px solid #cbd5e1;border-radius:10px;padding:20px;'>" +
-          "<h2 style='color:#1886F0;margin-top:0;'>Rig Management System — Asignación de Tarea</h2>" +
-          "<p>Hola <strong>" + data.assignee + "</strong>,</p>" +
-          "<p>Se te ha asignado una tarea en el workspace <strong>" + (data.studioName || "Rigging") + "</strong>:</p>" +
-          "<table style='width:100%;border-collapse:collapse;margin:14px 0;background:#f8fafc;'>" +
-            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Asset / Tarea:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.taskName + "</td></tr>" +
-            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Categoría:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.category + "</td></tr>" +
-            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Complejidad:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.complexity + "</td></tr>" +
-            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Jornadas Est.:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.days + " días</td></tr>" +
-            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Inicio → Entrega Est.:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.startDate + " → " + data.endDate + "</td></tr>" +
-            "<tr><td style='padding:8px;'><strong>Notas:</strong></td><td style='padding:8px;'>" + (data.notes || "Sin notas") + "</td></tr>" +
-          "</table>" +
-          "<p style='margin-top:18px;'><a href='" + data.rigUrl + "' style='background:#1886F0;color:#ffffff;padding:10px 18px;text-decoration:none;border-radius:6px;font-weight:bold;'>Abrir Ficha del Rig</a></p>" +
-        "</div>";
-
-      var mailOptions = {
-        to: data.email,
-        subject: asunto,
-        htmlBody: htmlBody
-      };
-      if (data.ccEmail) {
-        mailOptions.cc = data.ccEmail;
-      }
-      MailApp.sendEmail(mailOptions);
-      return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
-    }
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
-
-    function copyAppsScriptCode() {
-      copyRawText(GAS_MAILER_SNIPPET);
-      showToast("📋 Código de Google Apps Script copiado al portapapeles");
-    }
-
-    async function sendGmailAssignmentAlert(rig, eventType = "Nueva tarea asignada", isTest = false) {
-      if (!rig) return;
-      if (!isTest && state.gmailAlertsEnabled === false) return;
-
-      const webhookUrl = (state.gmailWebhookUrl || "").trim();
-      if (!webhookUrl) {
-        if (isTest) alert("⚠️ Primero pegá la URL de tu Google Apps Script en el campo correspondiente.");
-        return;
-      }
-
-      const member = (state.team || []).find(t => t.id === rig.assigneeId);
-      const targetEmail = isTest
-        ? ((state.gmailCcEmail || "").trim() || (currentAuthUser && currentAuthUser.email) || "")
-        : (member && member.email ? member.email.trim() : "");
-
-      if (!targetEmail) {
-        if (isTest) {
-          alert("⚠️ Ingresá un correo en 'Correo para Copia / Confirmación' para recibir la prueba.");
-        } else if (member) {
-          showToast(`⚠️ ${member.name} no tiene Gmail configurado en Equipo & Carpetas`);
-        }
-        return;
-      }
-
-      const m = calcRigMetrics(rig);
-      const baseUrl = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
-      const rigUrl = `${baseUrl}#/rig/${rig.id}`;
-
-      const payload = {
-        action: "sendTaskAlert",
-        eventType,
-        studioName: state.studioName || "Rig Management System",
-        email: targetEmail,
-        ccEmail: isTest ? "" : (state.gmailCcEmail || "").trim(),
-        assignee: isTest ? (currentAuthUser?.email || "Administrador") : (member ? member.name : "Equipo"),
-        taskName: rig.name || "Sin nombre",
-        category: rig.category || "Personaje",
-        complexity: rig.complexity || "Media",
-        days: m.totalEstDays || rig.baseEstDays || 1,
-        startDate: rig.startDate || todayISO(0),
-        endDate: m.endDate || "",
-        notes: rig.notes || "",
-        rigUrl
-      };
-
-      try {
-        await fetch(webhookUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
-        showToast(`📧 Alerta Gmail enviada a ${targetEmail}`);
-      } catch (err) {
-        console.error("Error enviando alerta Gmail:", err);
-        if (isTest) alert("❌ Error al conectar con Google Apps Script: " + (err.message || err));
-      }
-    }
-
-    function testGmailAlert() {
-      const urlInput = document.getElementById("cfg-gmail-webhook");
-      const ccInput = document.getElementById("cfg-gmail-cc");
-      if (urlInput) state.gmailWebhookUrl = urlInput.value.trim();
-      if (ccInput) state.gmailCcEmail = ccInput.value.trim();
-
-      const sampleRig = state.rigs[0] || {
-        id: "test-rig",
-        name: "Prueba de Alerta Rigging",
-        category: "Personaje Principal",
-        complexity: "Media",
-        baseEstDays: 5,
-        startDate: todayISO(0),
-        notes: "Correo de verificación desde Rig Management System."
-      };
-      sendGmailAssignmentAlert(sampleRig, "Prueba de conexión", true);
+      const comp = document.getElementById("nr-complexity").value;
+      if (COMPLEXITY_DEFAULTS[comp]) document.getElementById("nr-days").value = COMPLEXITY_DEFAULTS[comp];
     }
 
     function handleCreateRig(e) {
       e.preventDefault();
       if (!isAdmin()) return;
       const name = document.getElementById("nr-name").value.trim();
-      const id = "rig-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + String(Date.now()).slice(-4);
+      const category = document.getElementById("nr-category").value;
+      const folderId = document.getElementById("nr-folder").value;
+      const complexity = document.getElementById("nr-complexity").value;
+      const baseEstDays = Number(document.getElementById("nr-days").value) || 5;
+      const assigneeId = document.getElementById("nr-assignee").value;
+      const startDate = document.getElementById("nr-start").value;
+      const notes = document.getElementById("nr-notes").value.trim();
       const newRig = {
-        id,
-        name,
-        category: document.getElementById("nr-category").value,
-        folderId: document.getElementById("nr-folder").value,
-        complexity: document.getElementById("nr-complexity").value,
-        baseEstDays: Number(document.getElementById("nr-days").value) || 5,
-        actualDays: 0,
-        assigneeId: document.getElementById("nr-assignee").value,
-        startDate: document.getElementById("nr-start").value,
-        status: "pendiente",
-        notes: document.getElementById("nr-notes").value.trim(),
-        files: [],
-        customs: [],
-        stages: createStages(0, -1),
-        layoutReviews: [],
-        history: [{ date: new Date().toLocaleString(), action: "Ficha creada" }]
+        id: "rig-" + Date.now(), name, category, folderId, complexity, assigneeId, startDate,
+        baseEstDays, actualDays: 0, status: "pendiente", notes, files: [], customs: [],
+        stages: createStages(0, -1), layoutReviews: [],
+        history: [{ date: new Date().toLocaleString(), action: "Ficha de rig creada" }]
       };
-      state.rigs.unshift(newRig);
+      state.rigs.push(newRig);
       closeNewRigModal();
-      commitSave(`Nueva ficha "${name}" creada`);
-      if (newRig.assigneeId) {
+      commitSave(`Rig "${name}" creado`);
+      if (assigneeId) {
         sendGmailAssignmentAlert(newRig, "Nueva tarea asignada");
       }
-      navigate("#/rig/" + id);
     }
 
     function duplicateRig(rigId) {
       if (!isAdmin()) return;
-      const orig = state.rigs.find(r => r.id === rigId);
-      if (!orig) return;
-      const copy = JSON.parse(JSON.stringify(orig));
-      copy.id = orig.id + "-copy-" + String(Date.now()).slice(-4);
-      copy.name = orig.name + " (Copia)";
-      copy.history.unshift({ date: new Date().toLocaleString(), action: `Duplicada desde ${orig.name}` });
-      state.rigs.unshift(copy);
-      commitSave(`Ficha duplicada: ${copy.name}`);
+      const src = state.rigs.find(r => r.id === rigId);
+      if (!src) return;
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = "rig-" + Date.now();
+      copy.name = src.name + " (Copia)";
+      copy.files = [];
+      copy.history.unshift({ date: new Date().toLocaleString(), action: `Duplicado desde ${src.name}` });
+      state.rigs.push(copy);
+      commitSave(`Copia de "${src.name}" creada`);
     }
 
     function deleteRig(rigId) {
       if (!isAdmin()) return;
-      const r = state.rigs.find(x => x.id === rigId);
-      if (!r) return;
-      if (confirm(`¿Eliminar definitivamente la ficha de "${r.name}"?`)) {
-        pushUndoSnapshot(`Eliminar ${r.name}`);
-        state.rigs.forEach(x => { if (x.parentRigId === rigId) delete x.parentRigId; });
-        state.rigs = state.rigs.filter(x => x.id !== rigId);
-        commitSave(`Ficha "${r.name}" eliminada`);
+      const rig = state.rigs.find(r => r.id === rigId);
+      if (rig && confirm(`¿Eliminar permanentemente la ficha de "${rig.name}"?`)) {
+        state.rigs = state.rigs.filter(r => r.id !== rigId);
+        commitSave(`"${rig.name}" eliminado`);
       }
     }
 
+    // =========================================================================
+    // 13B. AGRUPAR TAREAS EN UNA TAREA MÁS GRANDE (DESPLEGABLE / MASTER GROUP)
+    // =========================================================================
     function toggleMasterExpand(masterId) {
-      if (collapsedMasterIds.has(masterId)) collapsedMasterIds.delete(masterId);
-      else collapsedMasterIds.add(masterId);
+      if (collapsedMasterIds.has(masterId)) {
+        collapsedMasterIds.delete(masterId);
+      } else {
+        collapsedMasterIds.add(masterId);
+      }
       renderCurrentRoute();
     }
 
-    function openGroupMasterModal(masterId = "", defaultCat = "Personaje Principal", isTimelineContext = false) {
+    function openGroupMasterModal(editMasterId = "", defaultCat = "Personaje Principal", isTimeline = false) {
       if (!isAdmin()) return;
       const modal = document.getElementById("group-master-modal");
-      document.getElementById("gm-folder").innerHTML = `<option value="">Sin carpeta</option>` + (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
-      document.getElementById("gm-assignee").innerHTML = `<option value="">Sin asignar</option>` + state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+      const catSel = document.getElementById("gm-category");
+      const cats = isTimeline ? TIMELINE_CATEGORIES : ["Personaje Principal", "Personaje Secundario", "Vehículo", "Custom"];
+      catSel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("");
+      catSel.value = cats.includes(defaultCat) ? defaultCat : cats[0];
 
-      const existing = masterId ? state.rigs.find(r => r.id === masterId) : null;
-      const onTimeline = isTimelineContext || (window.location.hash || "").startsWith("#/timeline") || (existing && TIMELINE_CATEGORIES.includes(existing.category));
-      const gmCats = onTimeline ? TIMELINE_CATEGORIES : ["Personaje Principal", "Personaje Secundario", "Vehículo", "Custom"];
-      const gmCatSel = document.getElementById("gm-category");
-      gmCatSel.innerHTML = gmCats.map(c => `<option value="${c}">${c}</option>`).join("");
+      document.getElementById("gm-folder").innerHTML = `<option value="">Sin carpeta</option>` +
+        (state.rigFolders || []).map(f => `<option value="${f.id}">📁 ${f.name}</option>`).join("");
+      document.getElementById("gm-assignee").innerHTML = `<option value="">Sin asignar</option>` +
+        state.team.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
 
-      const gmDelBtn = document.getElementById("gm-delete-btn");
-      if (gmDelBtn) gmDelBtn.style.display = existing ? "inline-flex" : "none";
-      document.getElementById("gm-edit-id").value = existing ? existing.id : "";
-      document.getElementById("gm-name").value = existing ? existing.name : "";
-      const targetCat = existing ? existing.category : defaultCat;
-      gmCatSel.value = gmCats.includes(targetCat) ? targetCat : gmCats[0];
-      document.getElementById("gm-folder").value = existing ? (existing.folderId || "") : "";
-      document.getElementById("gm-assignee").value = existing ? (existing.assigneeId || "") : "";
+      const editMaster = editMasterId ? state.rigs.find(r => r.id === editMasterId) : null;
+      document.getElementById("gm-edit-id").value = editMaster ? editMaster.id : "";
+      document.getElementById("gm-name").value = editMaster ? editMaster.name : "";
+      if (editMaster) {
+        if (!cats.includes(editMaster.category)) {
+          catSel.innerHTML += `<option value="${editMaster.category}">${editMaster.category}</option>`;
+        }
+        catSel.value = editMaster.category;
+        document.getElementById("gm-folder").value = editMaster.folderId || "";
+        document.getElementById("gm-assignee").value = editMaster.assigneeId || "";
+      }
 
-      const candidates = state.rigs.filter(r => !r.isMasterGroup && r.id !== masterId);
-      const listBox = document.getElementById("gm-children-list");
-      listBox.innerHTML = candidates.length === 0
+      const delBtn = document.getElementById("gm-delete-btn");
+      delBtn.style.display = editMaster ? "inline-flex" : "none";
+
+      const candidates = state.rigs.filter(r => !r.isMasterGroup && (!r.parentRigId || (editMaster && r.parentRigId === editMaster.id)));
+      const checkedIds = new Set(editMaster ? getChildRigs(editMaster.id).map(c => c.id) : []);
+
+      document.getElementById("gm-children-list").innerHTML = candidates.length === 0
         ? `<div style="color:var(--text-dim);font-size:12px;">No hay tareas disponibles para agrupar.</div>`
-        : candidates.map(r => {
-            const checked = existing ? (r.parentRigId === existing.id) : false;
-            const otherParent = r.parentRigId && (!existing || r.parentRigId !== existing.id)
-              ? state.rigs.find(p => p.id === r.parentRigId)
-              : null;
-            return `
-              <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 7px;border-radius:6px;background:var(--bg-card);cursor:pointer;color:var(--text-main);">
-                <span style="display:flex;align-items:center;gap:8px;">
-                  <input type="checkbox" class="gm-child-cb" value="${r.id}" ${checked ? "checked" : ""} />
-                  <strong>${r.name}</strong>
-                  <span style="font-size:11px;color:var(--text-muted);">(${r.category})</span>
-                </span>
-                ${otherParent ? `<span style="font-size:10.5px;color:var(--yellow);">En: ${otherParent.name}</span>` : `<span style="font-size:11px;color:var(--cyan);">${r.startDate}</span>`}
-              </label>
-            `;
-          }).join("");
+        : candidates.map(c => `
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;background:var(--bg-card);border-radius:6px;cursor:pointer;font-size:12.5px;color:#fff;">
+              <span style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" class="gm-child-cb" value="${c.id}" ${checkedIds.has(c.id) ? "checked" : ""} />
+                <strong>${c.name}</strong>
+              </span>
+              <span style="color:var(--text-muted);font-size:11px;">${c.category} · ${calcRigMetrics(c).totalEstDays}d</span>
+            </label>
+          `).join("");
 
       modal.classList.add("open");
     }
@@ -5279,112 +5051,94 @@
     function handleSaveMasterGroup(e) {
       e.preventDefault();
       if (!isAdmin()) return;
-      pushUndoSnapshot("Agrupar tareas");
       const editId = document.getElementById("gm-edit-id").value;
       const name = document.getElementById("gm-name").value.trim();
       const category = document.getElementById("gm-category").value;
       const folderId = document.getElementById("gm-folder").value;
       const assigneeId = document.getElementById("gm-assignee").value;
-      const selectedIds = Array.from(document.querySelectorAll(".gm-child-cb:checked")).map(cb => cb.value);
+      const selectedChildIds = new Set(Array.from(document.querySelectorAll(".gm-child-cb:checked")).map(cb => cb.value));
 
-      if (selectedIds.length === 0) {
-        alert("Seleccioná al menos una tarea para incluir dentro de esta tarea grande.");
-        return;
-      }
-
-      let masterRig = editId ? state.rigs.find(r => r.id === editId) : null;
-      if (!masterRig) {
-        const newId = "rig-grp-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + String(Date.now()).slice(-4);
-        masterRig = {
-          id: newId,
+      let master = editId ? state.rigs.find(r => r.id === editId) : null;
+      if (!master) {
+        master = {
+          id: "master-" + Date.now(),
           name,
           category,
           folderId,
           complexity: "Muy Alta",
-          baseEstDays: 1,
-          actualDays: 0,
           assigneeId,
           startDate: todayISO(0),
+          baseEstDays: 1,
+          actualDays: 0,
           status: "en progreso",
-          isMasterGroup: true,
-          notes: "Tarea agrupadora que contiene múltiples subtareas desplegables.",
+          notes: "Tarea agrupadora desplegable.",
           files: [],
           customs: [],
           stages: createStages(0, -1),
           layoutReviews: [],
-          history: [{ date: new Date().toLocaleString(), action: `Tarea agrupada "${name}" creada con ${selectedIds.length} subtareas` }]
+          isMasterGroup: true,
+          history: [{ date: new Date().toLocaleString(), action: "Tarea agrupadora creada" }]
         };
-        state.rigs.unshift(masterRig);
+        state.rigs.unshift(master);
       } else {
-        masterRig.name = name;
-        masterRig.category = category;
-        masterRig.folderId = folderId;
-        masterRig.assigneeId = assigneeId;
-        masterRig.isMasterGroup = true;
+        master.name = name;
+        master.category = category;
+        master.folderId = folderId;
+        master.assigneeId = assigneeId;
+        master.isMasterGroup = true;
       }
 
       state.rigs.forEach(r => {
-        if (r.parentRigId === masterRig.id && !selectedIds.includes(r.id)) {
+        if (r.id === master.id) return;
+        if (selectedChildIds.has(r.id)) {
+          r.parentRigId = master.id;
+        } else if (r.parentRigId === master.id) {
           delete r.parentRigId;
-        }
-        if (selectedIds.includes(r.id)) {
-          r.parentRigId = masterRig.id;
         }
       });
 
-      calcRigMetrics(masterRig);
-      collapsedMasterIds.delete(masterRig.id);
+      collapsedMasterIds.delete(master.id);
       closeGroupMasterModal();
-      commitSave(`Tarea agrupada "${name}" guardada (${selectedIds.length} tareas)`);
+      commitSave(`Grupo "${name}" guardado (${selectedChildIds.size} tareas)`);
     }
 
+    function removeSubtaskFromMaster(childId) {
+      if (!isAdmin()) return;
+      const ch = state.rigs.find(r => r.id === childId);
+      if (ch && ch.parentRigId) {
+        delete ch.parentRigId;
+        commitSave(`"${ch.name}" separada del grupo`);
+      }
+    }
 
     function deleteMasterGroup(masterId) {
       if (!isAdmin()) return;
       const master = state.rigs.find(r => r.id === masterId);
       if (!master) return;
-      const childCount = getChildRigs(masterId).length;
-      if (confirm(`¿Eliminar el grupo "${master.name}"?\n\nLas ${childCount} tarea(s) internas NO se borrarán, quedarán sueltas nuevamente en la Timeline.`)) {
-        pushUndoSnapshot(`Eliminar grupo ${master.name}`);
-        state.rigs.forEach(r => {
-          if (r.parentRigId === masterId) delete r.parentRigId;
-        });
+      if (confirm(`¿Eliminar la tarea agrupadora "${master.name}"? Las tareas internas quedarán libres sin borrarse.`)) {
+        state.rigs.forEach(r => { if (r.parentRigId === masterId) delete r.parentRigId; });
         state.rigs = state.rigs.filter(r => r.id !== masterId);
         collapsedMasterIds.delete(masterId);
-        closeGroupMasterModal();
-        commitSave(`Grupo "${master.name}" eliminado (tareas internas conservadas)`);
+        commitSave(`Grupo "${master.name}" eliminado`);
       }
     }
 
     function deleteMasterGroupFromModal() {
       const editId = document.getElementById("gm-edit-id").value;
+      closeGroupMasterModal();
       if (editId) deleteMasterGroup(editId);
     }
 
     function dissolveTimelineRowGroup(gid) {
       if (!isAdmin()) return;
-      pushUndoSnapshot("Eliminar grupo de fila en Timeline");
-      state.rigs.forEach(r => {
-        if ((r.timelineRowGroupId || r.id) === gid && r.timelineRowGroupId) {
-          delete r.timelineRowGroupId;
-        }
-      });
-      markDirty();
-      preserveGanttScrollAndRender();
-      showToast("🗑️ Grupo de fila eliminado; todas las tareas volvieron a sus filas individuales");
-    }
-
-    function removeSubtaskFromMaster(childId) {
-      if (!isAdmin()) return;
-      const child = state.rigs.find(r => r.id === childId);
-      if (child && child.parentRigId) {
-        pushUndoSnapshot("Desagrupar subtarea");
-        delete child.parentRigId;
-        commitSave(`"${child.name}" sacada del grupo`);
+      const members = state.rigs.filter(x => (x.timelineRowGroupId || x.id) === gid);
+      if (members.length <= 1) return;
+      if (confirm(`¿Quitar la agrupación de fila y separar las ${members.length} tareas a sus propias filas?`)) {
+        members.forEach(m => delete m.timelineRowGroupId);
+        commitSave("Agrupación de fila eliminada");
       }
     }
 
-    if (!window.location.hash) window.location.hash = "#/dashboard";
     bootstrapApp();
   </script>
 </body>
