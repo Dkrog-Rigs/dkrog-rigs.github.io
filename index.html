@@ -1390,10 +1390,10 @@
           }
         ],
         team: [
-          { id: "tm-1", name: "Martín Vega", role: "Lead Technical Director / Rigger", folderId: "tf-chars", capacityDays: 20000 },
-          { id: "tm-2", name: "Sofía Navarro", role: "Senior Character Rigger (Moho)", folderId: "tf-chars", capacityDays: 20000 },
-          { id: "tm-3", name: "Lucas Pereyra", role: "2D Rigger & Smart Bones Specialist", folderId: "tf-chars", capacityDays: 20000 },
-          { id: "tm-4", name: "Camila Rojas", role: "Props & Vehicle Rigger", folderId: "tf-props", capacityDays: 20000 }
+          { id: "tm-1", name: "Martín Vega", email: "", role: "Lead Technical Director / Rigger", folderId: "tf-chars", capacityDays: 20000 },
+          { id: "tm-2", name: "Sofía Navarro", email: "", role: "Senior Character Rigger (Moho)", folderId: "tf-chars", capacityDays: 20000 },
+          { id: "tm-3", name: "Lucas Pereyra", email: "", role: "2D Rigger & Smart Bones Specialist", folderId: "tf-chars", capacityDays: 20000 },
+          { id: "tm-4", name: "Camila Rojas", email: "", role: "Props & Vehicle Rigger", folderId: "tf-props", capacityDays: 20000 }
         ],
         customTemplates: [
           {
@@ -1644,6 +1644,10 @@
       if (!state.shareLinks) state.shareLinks = [];
       if (!state.reminders) state.reminders = [];
       if (!state.timelineMarkers) state.timelineMarkers = [];
+      if (state.gmailWebhookUrl === undefined) state.gmailWebhookUrl = "";
+      if (state.gmailCcEmail === undefined) state.gmailCcEmail = "";
+      if (state.gmailAlertsEnabled === undefined) state.gmailAlertsEnabled = true;
+      (state.team || []).forEach(m => { if (m.email === undefined) m.email = ""; });
       state.rigs.forEach(r => { if (!r.files) r.files = []; });
     }
 
@@ -2935,18 +2939,23 @@
         alert("⚠️ Punto de control obligatorio: La revisión con el Director de Layout aún no está aprobada.");
         return;
       }
+      const prevAssigneeId = rig.assigneeId || "";
+      const nextAssigneeId = document.getElementById("ed-assignee").value;
       rig.name = document.getElementById("ed-name").value.trim() || rig.name;
       rig.category = document.getElementById("ed-category").value;
       rig.folderId = document.getElementById("ed-folder").value;
       rig.complexity = document.getElementById("ed-complexity").value;
       rig.baseEstDays = Number(document.getElementById("ed-baseDays").value) || 1;
-      rig.assigneeId = document.getElementById("ed-assignee").value;
+      rig.assigneeId = nextAssigneeId;
       rig.status = newStatus;
       rig.startDate = document.getElementById("ed-start").value;
       rig.actualDays = Number(document.getElementById("ed-actual").value) || 0;
       rig.notes = document.getElementById("ed-notes").value;
       rig.history.unshift({ date: new Date().toLocaleString(), action: "Actualizados datos generales de la ficha" });
       commitSave(`Datos generales de ${rig.name} guardados`);
+      if (nextAssigneeId && nextAssigneeId !== prevAssigneeId) {
+        sendGmailAssignmentAlert(rig, "Tarea reasignada");
+      }
     }
 
     // =========================================================================
@@ -3723,6 +3732,10 @@
       e.preventDefault();
       if (!isAdmin()) return;
       if (!state.timelineMarkers) state.timelineMarkers = [];
+      if (state.gmailWebhookUrl === undefined) state.gmailWebhookUrl = "";
+      if (state.gmailCcEmail === undefined) state.gmailCcEmail = "";
+      if (state.gmailAlertsEnabled === undefined) state.gmailAlertsEnabled = true;
+      (state.team || []).forEach(m => { if (m.email === undefined) m.email = ""; });
       const id = document.getElementById("mk-id").value;
       const rigId = document.getElementById("mk-rig").value;
       const date = document.getElementById("mk-date").value;
@@ -4412,6 +4425,7 @@
               <div class="panel-title" style="margin-bottom:10px;">👤 Agregar Nuevo Miembro al Equipo</div>
               <form onsubmit="addTeamMember(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
                 <input type="text" id="tm-new-name" placeholder="Nombre..." required />
+                <input type="email" id="tm-new-email" placeholder="Gmail (para alertas)..." />
                 <input type="text" id="tm-new-role" placeholder="Rol..." required />
                 <select id="tm-new-folder">
                   <option value="">Equipo General</option>
@@ -4458,14 +4472,16 @@
                           </div>
                         </div>
                         ${isAdmin() ? `
-                          <div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;">
+                          <div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap;">
                             <span style="color:var(--text-muted);">Carpeta:</span>
                             <select onchange="moveMemberToFolder('${member.id}', this.value)" style="padding:3px 7px;font-size:12px;">
                               <option value="">Equipo General</option>
                               ${(state.teamFolders || []).map(tf => `<option value="${tf.id}" ${member.folderId===tf.id?"selected":""}>📁 ${tf.name}</option>`).join("")}
                             </select>
+                            <span style="color:var(--text-muted);margin-left:4px;">📧 Gmail:</span>
+                            <input type="email" value="${member.email || ''}" placeholder="correo@gmail.com" onchange="updateMemberEmail('${member.id}', this.value)" style="padding:3px 8px;font-size:12px;flex:1;min-width:165px;" />
                           </div>
-                        ` : ""}
+                        ` : (member.email ? `<div style="margin-top:6px;font-size:11.5px;color:var(--cyan);">📧 ${member.email}</div>` : "")}
                         <div style="display:flex;gap:16px;margin:11px 0;font-size:12.5px;">
                           <span>Asignados: <strong>${allAssigned.length}</strong></span>
                           <span>Pendientes: <strong>${active.length}</strong> (${pendingDays.toFixed(1)}d)</span>
@@ -4489,7 +4505,12 @@
     function renameTeamFolder(id) { if (!isAdmin()) return; const f = state.teamFolders.find(x => x.id === id); const n = prompt("Nuevo nombre:", f?.name); if (f && n?.trim()) { f.name = n.trim(); commitSave("Carpeta renombrada"); } }
     function deleteTeamFolder(id) { if (!isAdmin()) return; const f = state.teamFolders.find(x => x.id === id); if (f && confirm(`¿Eliminar carpeta "${f.name}"?`)) { state.teamFolders = state.teamFolders.filter(x => x.id !== id); state.team.forEach(m => { if (m.folderId === id) m.folderId = ""; }); commitSave("Carpeta eliminada"); } }
     function moveMemberToFolder(id, fid) { if (!isAdmin()) return; const m = state.team.find(x => x.id === id); if (m) { m.folderId = fid; commitSave("Miembro movido"); } }
-    function addTeamMember(e) { e.preventDefault(); if (!isAdmin()) return; state.team.push({ id: "tm-" + Date.now(), name: document.getElementById("tm-new-name").value.trim(), role: document.getElementById("tm-new-role").value.trim(), folderId: document.getElementById("tm-new-folder").value, capacityDays: Number(document.getElementById("tm-new-cap").value) || 20 }); commitSave("Miembro añadido"); }
+    function updateMemberEmail(id, val) {
+      if (!isAdmin()) return;
+      const m = state.team.find(x => x.id === id);
+      if (m) { m.email = val.trim(); commitSave(`Correo de ${m.name} actualizado`); }
+    }
+    function addTeamMember(e) { e.preventDefault(); if (!isAdmin()) return; state.team.push({ id: "tm-" + Date.now(), name: document.getElementById("tm-new-name").value.trim(), email: (document.getElementById("tm-new-email")?.value || "").trim(), role: document.getElementById("tm-new-role").value.trim(), folderId: document.getElementById("tm-new-folder").value, capacityDays: Number(document.getElementById("tm-new-cap").value) || 20 }); commitSave("Miembro añadido"); }
     function deleteTeamMember(id) { if (!isAdmin()) return; const m = state.team.find(x => x.id === id); if (m && confirm(`¿Eliminar a "${m.name}" del equipo?`)) { state.team = state.team.filter(x => x.id !== id); state.rigs.forEach(r => { if (r.assigneeId === id) r.assigneeId = ""; }); commitSave(`"${m.name}" eliminado del equipo`); } }
 
     function renderReminders(el) {
@@ -4928,6 +4949,34 @@
               </div>
             </div>
           </div>
+          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+            <div class="panel-title" style="font-size:14px;margin-bottom:6px;">📧 Alertas Automáticas por Gmail al Crear o Asignar Tareas</div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+              Conectá tu Google Apps Script Web App para enviar un correo automático cada vez que creás una tarea nueva o cambiás el responsable asignado. Configurá el Gmail de cada integrante en la pestaña <strong>Equipo &amp; Carpetas</strong>.
+            </p>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>URL de Google Apps Script (Web App /exec)</label>
+                <input type="url" id="cfg-gmail-webhook" value="${state.gmailWebhookUrl || ''}" placeholder="https://script.google.com/macros/s/.../exec" />
+              </div>
+              <div class="form-group">
+                <label>Correo para Copia / Confirmación (opcional)</label>
+                <input type="email" id="cfg-gmail-cc" value="${state.gmailCcEmail || ''}" placeholder="tu-correo@gmail.com" />
+              </div>
+              <div class="form-group">
+                <label>Estado de Envío Automático</label>
+                <select id="cfg-gmail-enabled">
+                  <option value="true" ${state.gmailAlertsEnabled !== false ? "selected" : ""}>✅ Activo (enviar al crear o reasignar tarea)</option>
+                  <option value="false" ${state.gmailAlertsEnabled === false ? "selected" : ""}>⏸️ Pausado</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button type="button" class="btn btn-primary btn-sm" onclick="testGmailAlert()">📨 Enviar Correo de Prueba</button>
+              <button type="button" class="btn btn-sm" onclick="copyAppsScriptCode()">📋 Copiar Código para Google Apps Script</button>
+            </div>
+          </div>
+
           <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
             <span style="color:var(--text-muted);font-size:12.5px;">Restaurar datos iniciales de demostración:</span>
             <button class="btn btn-danger btn-sm" onclick="resetDemoData()">🔄 Restaurar Datos Precargados</button>
@@ -4947,7 +4996,13 @@
       if (teamDlInput) {
         state.teamDefaultDownload = teamDlInput.value === "true";
       }
-      commitSave("Configuración de seguridad guardada");
+      const whInput = document.getElementById("cfg-gmail-webhook");
+      if (whInput) state.gmailWebhookUrl = whInput.value.trim();
+      const ccInput = document.getElementById("cfg-gmail-cc");
+      if (ccInput) state.gmailCcEmail = ccInput.value.trim();
+      const enInput = document.getElementById("cfg-gmail-enabled");
+      if (enInput) state.gmailAlertsEnabled = enInput.value === "true";
+      commitSave("Configuración guardada");
     }
 
     function resetDemoData() {
@@ -4987,6 +5042,129 @@
       if (COMPLEXITY_DEFAULTS[c]) document.getElementById("nr-days").value = COMPLEXITY_DEFAULTS[c];
     }
 
+    
+    // =========================================================================
+    // 14. ALERTAS AUTOMÁTICAS POR GMAIL (GOOGLE APPS SCRIPT WEBHOOK)
+    // =========================================================================
+    const GAS_MAILER_SNIPPET = `function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data.action === "sendTaskAlert") {
+      var asunto = "[RIG MOHO] " + (data.eventType || "Nueva tarea") + ": " + data.taskName;
+      var htmlBody =
+        "<div style='font-family:Arial,sans-serif;color:#1e293b;max-width:600px;border:1px solid #cbd5e1;border-radius:10px;padding:20px;'>" +
+          "<h2 style='color:#1886F0;margin-top:0;'>Rig Management System — Asignación de Tarea</h2>" +
+          "<p>Hola <strong>" + data.assignee + "</strong>,</p>" +
+          "<p>Se te ha asignado una tarea en el workspace <strong>" + (data.studioName || "Rigging") + "</strong>:</p>" +
+          "<table style='width:100%;border-collapse:collapse;margin:14px 0;background:#f8fafc;'>" +
+            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Asset / Tarea:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.taskName + "</td></tr>" +
+            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Categoría:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.category + "</td></tr>" +
+            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Complejidad:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.complexity + "</td></tr>" +
+            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Jornadas Est.:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.days + " días</td></tr>" +
+            "<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0;'><strong>Inicio → Entrega Est.:</strong></td><td style='padding:8px;border-bottom:1px solid #e2e8f0;'>" + data.startDate + " → " + data.endDate + "</td></tr>" +
+            "<tr><td style='padding:8px;'><strong>Notas:</strong></td><td style='padding:8px;'>" + (data.notes || "Sin notas") + "</td></tr>" +
+          "</table>" +
+          "<p style='margin-top:18px;'><a href='" + data.rigUrl + "' style='background:#1886F0;color:#ffffff;padding:10px 18px;text-decoration:none;border-radius:6px;font-weight:bold;'>Abrir Ficha del Rig</a></p>" +
+        "</div>";
+
+      var mailOptions = {
+        to: data.email,
+        subject: asunto,
+        htmlBody: htmlBody
+      };
+      if (data.ccEmail) {
+        mailOptions.cc = data.ccEmail;
+      }
+      MailApp.sendEmail(mailOptions);
+      return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+    function copyAppsScriptCode() {
+      copyRawText(GAS_MAILER_SNIPPET);
+      showToast("📋 Código de Google Apps Script copiado al portapapeles");
+    }
+
+    async function sendGmailAssignmentAlert(rig, eventType = "Nueva tarea asignada", isTest = false) {
+      if (!rig) return;
+      if (!isTest && state.gmailAlertsEnabled === false) return;
+
+      const webhookUrl = (state.gmailWebhookUrl || "").trim();
+      if (!webhookUrl) {
+        if (isTest) alert("⚠️ Primero pegá la URL de tu Google Apps Script en el campo correspondiente.");
+        return;
+      }
+
+      const member = (state.team || []).find(t => t.id === rig.assigneeId);
+      const targetEmail = isTest
+        ? ((state.gmailCcEmail || "").trim() || (currentAuthUser && currentAuthUser.email) || "")
+        : (member && member.email ? member.email.trim() : "");
+
+      if (!targetEmail) {
+        if (isTest) {
+          alert("⚠️ Ingresá un correo en 'Correo para Copia / Confirmación' para recibir la prueba.");
+        } else if (member) {
+          showToast(`⚠️ ${member.name} no tiene Gmail configurado en Equipo & Carpetas`);
+        }
+        return;
+      }
+
+      const m = calcRigMetrics(rig);
+      const baseUrl = SERVER_WEBAPP_URL || window.location.href.split("#")[0].split("?")[0];
+      const rigUrl = `${baseUrl}#/rig/${rig.id}`;
+
+      const payload = {
+        action: "sendTaskAlert",
+        eventType,
+        studioName: state.studioName || "Rig Management System",
+        email: targetEmail,
+        ccEmail: isTest ? "" : (state.gmailCcEmail || "").trim(),
+        assignee: isTest ? (currentAuthUser?.email || "Administrador") : (member ? member.name : "Equipo"),
+        taskName: rig.name || "Sin nombre",
+        category: rig.category || "Personaje",
+        complexity: rig.complexity || "Media",
+        days: m.totalEstDays || rig.baseEstDays || 1,
+        startDate: rig.startDate || todayISO(0),
+        endDate: m.endDate || "",
+        notes: rig.notes || "",
+        rigUrl
+      };
+
+      try {
+        await fetch(webhookUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        showToast(`📧 Alerta Gmail enviada a ${targetEmail}`);
+      } catch (err) {
+        console.error("Error enviando alerta Gmail:", err);
+        if (isTest) alert("❌ Error al conectar con Google Apps Script: " + (err.message || err));
+      }
+    }
+
+    function testGmailAlert() {
+      const urlInput = document.getElementById("cfg-gmail-webhook");
+      const ccInput = document.getElementById("cfg-gmail-cc");
+      if (urlInput) state.gmailWebhookUrl = urlInput.value.trim();
+      if (ccInput) state.gmailCcEmail = ccInput.value.trim();
+
+      const sampleRig = state.rigs[0] || {
+        id: "test-rig",
+        name: "Prueba de Alerta Rigging",
+        category: "Personaje Principal",
+        complexity: "Media",
+        baseEstDays: 5,
+        startDate: todayISO(0),
+        notes: "Correo de verificación desde Rig Management System."
+      };
+      sendGmailAssignmentAlert(sampleRig, "Prueba de conexión", true);
+    }
+
     function handleCreateRig(e) {
       e.preventDefault();
       if (!isAdmin()) return;
@@ -5013,6 +5191,9 @@
       state.rigs.unshift(newRig);
       closeNewRigModal();
       commitSave(`Nueva ficha "${name}" creada`);
+      if (newRig.assigneeId) {
+        sendGmailAssignmentAlert(newRig, "Nueva tarea asignada");
+      }
       navigate("#/rig/" + id);
     }
 
